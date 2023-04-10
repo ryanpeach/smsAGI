@@ -1,0 +1,7 @@
+fastapi
+openai
+langchain
+dotenv
+PyYaml
+faiss
+twilio

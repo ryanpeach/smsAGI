@@ -1,0 +1,7 @@
+pytest-cov
+pytest
+black
+mypy
+detect-secrets
+pre-commit
+pytest-cov
