@@ -1,5 +1,7 @@
 # SMS GPT
 
+**DRAFT: Not currently working.**
+
 An implementation of BabyGPT using Langchain that can communicate via SMS to the user.
 
 # Setup
