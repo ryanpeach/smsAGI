@@ -2,6 +2,7 @@
 
 import os
 from collections import deque
+import threading
 from typing import Dict, List, Optional, Any, TypedDict
 
 from langchain import LLMChain, OpenAI, PromptTemplate
@@ -170,6 +171,8 @@ class BabyAGI(Chain, BaseModel):
     task_id_counter: int = Field(1)
     vectorstore: VectorStore = Field(init=False)
     max_iterations: Optional[int] = None
+    objective: str = Field(...)
+    threading_lock: threading.Lock = Field(init=False)
 
     class Config:
         """Configuration for this pydantic object."""
@@ -177,7 +180,20 @@ class BabyAGI(Chain, BaseModel):
         arbitrary_types_allowed = True
 
     def add_task(self, task: Task) -> None:
-        self.task_list.append(task)
+        with self.threading_lock:
+            self.task_list.append(task)
+
+    def pop_task(self) -> Task:
+        with self.threading_lock:
+            return self.task_list.popleft()
+
+    def get_tasks(self) -> List[Task]:
+        with self.threading_lock:
+            return list(self.task_list)
+
+    def set_tasks(self, tasks: List[Task]) -> None:
+        with self.threading_lock:
+            self.task_list = deque(tasks)
 
     def print_user_input_list(self):
         print("\033[94m\033[1m" + "\n*****USER INPUT LIST*****\n" + "\033[0m\033[0m")
@@ -205,62 +221,71 @@ class BabyAGI(Chain, BaseModel):
     def output_keys(self) -> List[str]:
         return []
 
-    def _call(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Run the agent."""
-        objective = inputs["objective"]
-        first_task = inputs.get("first_task", "Make a todo list")
-        self.add_task({"task_id": 1, "task_name": first_task})
-        num_iters = 0
-        while True:
-            if self.task_list:
-                self.print_task_list()
+    def _single_step(self):
+        self.print_task_list()
 
-                # Step 1: Pull the first task
-                task = self.task_list.popleft()
-                self.print_next_task(task)
+        # Step 1: Pull the first task
+        task = self.pop_task()
+        self.print_next_task(task)
 
-                # Step 2: Execute the task
-                result = execute_task(
-                    self.vectorstore, self.execution_chain, objective, task["task_name"]
-                )
-                this_task_id = int(task["task_id"])
-                self.print_task_result(result)
+        # Step 2: Execute the task
+        result = execute_task(
+            self.vectorstore, self.execution_chain, self.objective, task["task_name"]
+        )
 
-                # Step 3: Store the result in Pinecone
-                result_id = f"result_{task['task_id']}"
-                self.vectorstore.add_texts(
-                    texts=[result],
-                    metadatas=[{"task": task["task_name"]}],
-                    ids=[result_id],
-                )
+        this_task_id = int(task["task_id"])
+        self.print_task_result(result)
 
-                # Step 4: Create new tasks and reprioritize task list
-                new_tasks = get_next_task(
-                    self.task_creation_chain,
-                    result,
-                    task["task_name"],
-                    [t["task_name"] for t in self.task_list],
-                    objective,
-                )
-                for new_task in new_tasks:
-                    self.task_id_counter += 1
-                    new_task.update({"task_id": self.task_id_counter})
-                    self.add_task(new_task)
-                self.task_list = deque(
-                    prioritize_tasks(
-                        self.task_prioritization_chain,
-                        this_task_id,
-                        list(self.task_list),
-                        objective,
+        # Step 3: Store the result in Pinecone
+        result_id = f"result_{task['task_id']}"
+        self.vectorstore.add_texts(
+            texts=[result],
+            metadatas=[{"task": task["task_name"]}],
+            ids=[result_id],
+        )
+
+        # Step 4: Create new tasks and reprioritize task list
+        new_tasks = get_next_task(
+            self.task_creation_chain,
+            result,
+            task["task_name"],
+            [t["task_name"] for t in self.get_tasks()],
+            self.objective,
+        )
+
+        for new_task in new_tasks:
+            self.task_id_counter += 1
+            new_task.update({"task_id": self.task_id_counter})
+            self.add_task(new_task)
+
+        self.set_tasks((
+            prioritize_tasks(
+                self.task_prioritization_chain,
+                this_task_id,
+                list(self.task_list),
+                self.objective,
+            )
+        )
+
+    def __enter__(self):
+        """Run the agent in the background."""
+        def runtime():
+            num_iters = 0
+            while True:
+                if self.task_list:
+                    self._single_step()
+                num_iters += 1
+                if self.max_iterations is not None and num_iters == self.max_iterations:
+                    print(
+                        "\033[91m\033[1m" + "\n*****TASK ENDING*****\n" + "\033[0m\033[0m"
                     )
-                )
-            num_iters += 1
-            if self.max_iterations is not None and num_iters == self.max_iterations:
-                print(
-                    "\033[91m\033[1m" + "\n*****TASK ENDING*****\n" + "\033[0m\033[0m"
-                )
-                break
-        return {}
+                    break
+
+        self.thread = threading.Thread(target=runtime).start()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Exit the agent."""
+        self.thread.join()
 
     @classmethod
     def from_llm(
