@@ -1,20 +1,23 @@
 # REF: https://github.com/hwchase17/langchain/blob/master/docs/use_cases/agents/baby_agi.ipynb
 
 import os
+import uuid
 from collections import deque
-import threading
-from typing import Dict, List, Optional, Any, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 
+import faiss
+from colorama import Fore, Style, init
 from langchain import LLMChain, OpenAI, PromptTemplate
+from langchain.chains.base import Chain
+from langchain.docstore import InMemoryDocstore
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.llms import BaseLLM
+from langchain.vectorstores import FAISS
 from langchain.vectorstores.base import VectorStore
 from pydantic import BaseModel, Field
-from langchain.chains.base import Chain
 
-from langchain.vectorstores import FAISS
-from langchain.docstore import InMemoryDocstore
-import faiss
+# Initialize colorama
+init(autoreset=True)
 
 # Define your embedding model
 embeddings_model = OpenAIEmbeddings()
@@ -27,7 +30,7 @@ vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {
 class Task(TypedDict):
     """Task model."""
 
-    task_id: str
+    task_id: uuid.UUID
     task_name: str
 
 
@@ -35,7 +38,7 @@ class TaskCreationChain(LLMChain):
     """Chain to generates tasks."""
 
     @classmethod
-    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> LLMChain:
+    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "TaskCreationChain":
         """Get the response parser."""
         task_creation_template = (
             "You are an task creation AI that uses the result of an execution agent"
@@ -63,7 +66,7 @@ class TaskPrioritizationChain(LLMChain):
     """Chain to prioritize tasks."""
 
     @classmethod
-    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> LLMChain:
+    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "TaskPrioritizationChain":
         """Get the response parser."""
         task_prioritization_template = (
             "You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing"
@@ -85,7 +88,7 @@ class ExecutionChain(LLMChain):
     """Chain to execute tasks."""
 
     @classmethod
-    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> LLMChain:
+    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "ExecutionChain":
         """Get the response parser."""
         execution_template = (
             "You are an AI who performs one task based on the following objective: {objective}."
@@ -101,26 +104,30 @@ class ExecutionChain(LLMChain):
 
 
 def get_next_task(
-    task_creation_chain: LLMChain,
-    result: Dict,
+    task_creation_chain: TaskCreationChain,
+    prev_task_result: Dict,
     task_description: str,
     task_list: List[Task],
     objective: str,
 ) -> List[Task]:
     """Get the next task."""
-    incomplete_tasks = ", ".join(task_list)
+    incomplete_tasks = ", ".join([task["task_name"] for task in task_list])
     response = task_creation_chain.run(
-        result=result,
+        result=prev_task_result,
         task_description=task_description,
         incomplete_tasks=incomplete_tasks,
         objective=objective,
     )
     new_tasks = response.split("\n")
-    return [Task(task_name=task_name) for task_name in new_tasks if task_name.strip()]
+    return [
+        Task(task_name=task_name, task_id=uuid.uuid4())
+        for task_name in new_tasks
+        if task_name.strip()
+    ]
 
 
 def prioritize_tasks(
-    task_prioritization_chain: LLMChain,
+    task_prioritization_chain: TaskPrioritizationChain,
     this_task_id: int,
     task_list: List[Task],
     objective: str,
@@ -138,7 +145,7 @@ def prioritize_tasks(
             continue
         task_parts = task_string.strip().split(".", 1)
         if len(task_parts) == 2:
-            task_id = task_parts[0].strip()
+            task_id = uuid.UUID(task_parts[0].strip())
             task_name = task_parts[1].strip()
             prioritized_task_list.append(Task(task_id=task_id, task_name=task_name))
     return prioritized_task_list
@@ -161,23 +168,31 @@ def execute_task(
     return execution_chain.run(objective=objective, context=context, task=task)
 
 
-class BabyAGI(Chain, BaseModel):
+class BabyAGI(Chain):
     """Controller model for the BabyAGI agent."""
 
     task_list: deque[Task] = Field(default_factory=deque)
     task_creation_chain: TaskCreationChain = Field(...)
     task_prioritization_chain: TaskPrioritizationChain = Field(...)
     execution_chain: ExecutionChain = Field(...)
-    task_id_counter: int = Field(1)
     vectorstore: VectorStore = Field(init=False)
-    max_iterations: Optional[int] = None
-    objective: str = Field(...)
-    threading_lock: threading.Lock = Field(init=False)
+    max_iterations: Optional[int]
+    objective: str
+    _stop: bool
 
-    class Config:
-        """Configuration for this pydantic object."""
-
-        arbitrary_types_allowed = True
+    def __init__(self, **data: Any) -> None:
+        """Initialize the model."""
+        super().__init__(**data)
+        self.task_list = deque()
+        self.task_prioritization_chain = TaskPrioritizationChain.from_llm(
+            self.task_prioritization_chain.llm
+        )
+        self.task_creation_chain = TaskCreationChain.from_llm(
+            self.task_creation_chain.llm
+        )
+        self.execution_chain = ExecutionChain.from_llm(self.execution_chain.llm)
+        self.vectorstore = VectorStore()
+        self._stop = False
 
     def add_task(self, task: Task) -> None:
         with self.threading_lock:
@@ -195,31 +210,23 @@ class BabyAGI(Chain, BaseModel):
         with self.threading_lock:
             self.task_list = deque(tasks)
 
-    def print_user_input_list(self):
-        print("\033[94m\033[1m" + "\n*****USER INPUT LIST*****\n" + "\033[0m\033[0m")
-        for u in self.user_input_list:
-            print(u)
+    def _print_with_color(self, color: Fore, title: str, content: str) -> None:
+        print(f"{color}{Style.BRIGHT}{title}{Style.RESET_ALL}")
+        print(content)
 
     def print_task_list(self):
-        print("\033[95m\033[1m" + "\n*****TASK LIST*****\n" + "\033[0m\033[0m")
-        for t in self.task_list:
-            print(str(t["task_id"]) + ": " + t["task_name"])
+        task_list_str = "\n".join(
+            [f"{t['task_id']}: {t['task_name']}" for t in self.task_list]
+        )
+        self._print_with_color(Fore.MAGENTA, "*****TASK LIST*****", task_list_str)
 
     def print_next_task(self, task: Task):
-        print("\033[92m\033[1m" + "\n*****NEXT TASK*****\n" + "\033[0m\033[0m")
-        print(str(task["task_id"]) + ": " + task["task_name"])
+        self._print_with_color(
+            Fore.GREEN, "*****NEXT TASK*****", f"{task['task_id']}: {task['task_name']}"
+        )
 
     def print_task_result(self, result: str):
-        print("\033[93m\033[1m" + "\n*****TASK RESULT*****\n" + "\033[0m\033[0m")
-        print(result)
-
-    @property
-    def input_keys(self) -> List[str]:
-        return ["objective"]
-
-    @property
-    def output_keys(self) -> List[str]:
-        return []
+        self._print_with_color(Fore.YELLOW, "*****TASK RESULT*****", result)
 
     def _single_step(self):
         self.print_task_list()
@@ -229,17 +236,17 @@ class BabyAGI(Chain, BaseModel):
         self.print_next_task(task)
 
         # Step 2: Execute the task
-        result = execute_task(
+        task_result = execute_task(
             self.vectorstore, self.execution_chain, self.objective, task["task_name"]
         )
 
         this_task_id = int(task["task_id"])
-        self.print_task_result(result)
+        self.print_task_result(task_result)
 
         # Step 3: Store the result in Pinecone
         result_id = f"result_{task['task_id']}"
         self.vectorstore.add_texts(
-            texts=[result],
+            texts=[task_result],
             metadatas=[{"task": task["task_name"]}],
             ids=[result_id],
         )
@@ -247,45 +254,40 @@ class BabyAGI(Chain, BaseModel):
         # Step 4: Create new tasks and reprioritize task list
         new_tasks = get_next_task(
             self.task_creation_chain,
-            result,
+            task_result,
             task["task_name"],
-            [t["task_name"] for t in self.get_tasks()],
+            list(self.get_tasks()),
             self.objective,
         )
 
         for new_task in new_tasks:
-            self.task_id_counter += 1
-            new_task.update({"task_id": self.task_id_counter})
+            new_task.update({"task_id": uuid.uuid4()})
             self.add_task(new_task)
 
-        self.set_tasks((
-            prioritize_tasks(
-                self.task_prioritization_chain,
-                this_task_id,
-                list(self.task_list),
-                self.objective,
+        self.set_tasks(
+            (
+                prioritize_tasks(
+                    self.task_prioritization_chain,
+                    this_task_id,
+                    list(self.task_list),
+                    self.objective,
+                )
             )
         )
 
-    def __enter__(self):
-        """Run the agent in the background."""
-        def runtime():
-            num_iters = 0
-            while True:
-                if self.task_list:
-                    self._single_step()
-                num_iters += 1
-                if self.max_iterations is not None and num_iters == self.max_iterations:
-                    print(
-                        "\033[91m\033[1m" + "\n*****TASK ENDING*****\n" + "\033[0m\033[0m"
-                    )
-                    break
-
-        self.thread = threading.Thread(target=runtime).start()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        """Exit the agent."""
-        self.thread.join()
+    def _call(self):
+        num_iters = 0
+        with self.threading_lock:
+            stop = self._stop
+        while not stop:
+            if self.task_list:
+                self._single_step()
+            num_iters += 1
+            if self.max_iterations is not None and num_iters == self.max_iterations:
+                print(f"{Fore.RED}{Style.BRIGHT}*****TASK ENDING*****{Style.RESET_ALL}")
+                break
+            with self.threading_lock:
+                stop = self._stop
 
     @classmethod
     def from_llm(

@@ -1,4 +1,4 @@
-# SMS GPT
+# smsAGI
 
 **DRAFT: Not currently working.**
 
@@ -38,23 +38,11 @@ TWILIO_AUTH_TOKEN=<your Twilio auth token>
 TWILIO_PHONE_NUMBER=<your Twilio phone number>
 ```
 
-## Docker
+## Docker Compose
 
 Now you are ready to build and run!
 
-On Linux:
-
-```bash
-docker build -t smsgpt .
-docker run --net=host -it smsgpt http 80
-```
-
-On Windows or Mac:
-
-```bash
-docker build -t smsgpt .
-docker run -it smsgpt http host.docker.internal:80
-```
+`docker-compose up --build`
 
 # Contributing
 

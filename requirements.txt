@@ -1,7 +1,9 @@
-fastapi
+flask
 openai
 langchain
-dotenv
-PyYaml
-faiss
+PyYAML
+faiss-cpu
 twilio
+colorama
+redis
+rich

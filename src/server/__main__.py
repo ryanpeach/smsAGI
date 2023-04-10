@@ -1,9 +1,11 @@
-import os
 import argparse
+import os
+
+import faiss
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-from smsgpt.babyagi import BabyAGI, OpenAI, FAISS, InMemoryDocstore, OpenAIEmbeddings
-import faiss
+
+from server.babyagi import FAISS, BabyAGI, InMemoryDocstore, OpenAI, OpenAIEmbeddings
 
 # Set up the argument parser
 parser = argparse.ArgumentParser(description="Configure the BabyAGI agent.")
@@ -47,7 +49,11 @@ embeddings_model = OpenAIEmbeddings()
 vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
 llm = OpenAI(temperature=args.temperature)
 baby_agi = BabyAGI.from_llm(
-    llm, vectorstore, verbose=args.verbose, max_iterations=args.max_iterations, logger=twilio_client
+    llm,
+    vectorstore,
+    verbose=args.verbose,
+    max_iterations=args.max_iterations,
+    logger=twilio_client,
 )
 
 
