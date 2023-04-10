@@ -4,6 +4,7 @@ import os
 import uuid
 from collections import deque
 from typing import Any, Dict, List, Optional, TypedDict
+from agi.redis import QAAgent
 
 import faiss
 from colorama import Fore, Style, init
@@ -192,7 +193,7 @@ class BabyAGI(Chain):
         )
         self.execution_chain = ExecutionChain.from_llm(self.execution_chain.llm)
         self.vectorstore = VectorStore()
-        self._stop = False
+        self.qaagent = QAAgent()
 
     def add_task(self, task: Task) -> None:
         with self.threading_lock:
@@ -251,6 +252,11 @@ class BabyAGI(Chain):
             ids=[result_id],
         )
 
+        # Get tasks from the user
+        user_messages = self.qaagent.receive_all_user_responses()
+        for user_msg in user_messages:
+            self.add_task(Task(task_id=uuid.uuid4(), task_name=f"Respond to the user, who said: {user_msg}"))
+
         # Step 4: Create new tasks and reprioritize task list
         new_tasks = get_next_task(
             self.task_creation_chain,
@@ -261,7 +267,6 @@ class BabyAGI(Chain):
         )
 
         for new_task in new_tasks:
-            new_task.update({"task_id": uuid.uuid4()})
             self.add_task(new_task)
 
         self.set_tasks(
@@ -310,13 +315,53 @@ class BabyAGI(Chain):
 
 # For debugging this code in isolation
 if __name__ == "__main__":
-    OBJECTIVE = "Write a weather report for SF today"
-    llm = OpenAI(temperature=0)
-    # Logging of LLMChains
-    verbose = False
-    # If None, will keep on going forever
-    max_iterations: Optional[int] = 3
-    baby_agi = BabyAGI.from_llm(
-        llm=llm, vectorstore=vectorstore, verbose=verbose, max_iterations=max_iterations
+
+
+    # Set up the argument parser
+    parser = argparse.ArgumentParser(description="Configure the BabyAGI agent.")
+    parser.add_argument(
+        "--sms",
+        type=str,
+        default="",
+        help="Phone number to send SMS messages to. Otherwise, just use the CLI client.",
     )
-    baby_agi({"objective": OBJECTIVE})
+    parser.add_argument(
+        "--objective",
+        type=str,
+        default="Write a weather report for SF today",
+        help="Initial objective for BabyAGI.",
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=0, help="Temperature for the OpenAI model."
+    )
+    parser.add_argument(
+        "--max_iterations",
+        type=int,
+        default=3,
+        help="Maximum number of iterations for the BabyAGI agent.",
+    )
+    parser.add_argument(
+        "--embedding_size",
+        type=int,
+        default=1536,
+        help="Size of the embeddings for the FAISS index.",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose output for BabyAGI."
+    )
+    args = parser.parse_args()
+
+
+    # Initialize the BabyAGI agent using the parsed arguments
+    index = faiss.IndexFlatL2(args.embedding_size)
+    embeddings_model = OpenAIEmbeddings()
+    vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
+    llm = OpenAI(temperature=args.temperature)
+    baby_agi = BabyAGI.from_llm(
+        llm,
+        vectorstore,
+        verbose=args.verbose,
+        max_iterations=args.max_iterations,
+        logger=twilio_client,
+    )
+    baby_agi({"objective": args.objective})

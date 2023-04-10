@@ -7,7 +7,6 @@ from rich.Markdown import Markdown
 from lib.chat import ChatMessage, create_chat_message
 from lib.redis import connect_to_redis
 
-
 def pretty_format_message(message: ChatMessage) -> Markdown:
     role = message["role"]
     content = message["content"]
@@ -33,11 +32,11 @@ class QAClient:
         while True:
             if self.redis.llen("touser") > 0:
                 message = self.redis.rpop("touser")
+                msg = pretty_format_message(create_chat_message("assistant", message))
                 with console_lock:
-                    msg = create_chat_message("assistant", message)
-                    with open(LOG_PATH, "a") as f:
-                        f.write(json.dumps(msg) + "\n")
-                    console.print(pretty_format_message(msg))
+                    # with open(LOG_PATH, "a") as f:
+                    #     f.write(json.dumps(msg) + "\n")
+                    console.print(msg)
 
     def send_message(self, message: str) -> None:
         self.redis.lpush("togpt", message)

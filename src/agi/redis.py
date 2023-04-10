@@ -1,7 +1,6 @@
 from typing import List
 
-from autogpt import chat
-
+from lib import chat
 from lib.redis import connect_to_redis
 
 
