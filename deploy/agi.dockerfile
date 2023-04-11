@@ -5,5 +5,6 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Run the agi agent
-COPY src/agi .
-CMD ["python", "-m", "src/agi"]
+COPY src/lib lib
+COPY src/agi agi
+CMD ["python", "-m", "agi"]

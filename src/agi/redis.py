@@ -1,7 +1,8 @@
 from typing import List
 
-from lib import chat
+
 from lib.redis import connect_to_redis
+from langchain.chat_models.openai import BaseMessage
 
 
 class QAAgent:
@@ -19,13 +20,13 @@ class QAAgent:
         else:
             return self.wait()
 
-    def receive_all_user_responses(self) -> List[chat.ChatMessage]:
+    def receive_all_user_responses(self) -> List[BaseMessage]:
         """Checks to see if there has yet been a single response from the user and if so returns it as a JSON string."""
         out = []
 
         while self.redis.llen("togpt") > 0:
             message = self.redis.rpop("togpt")
-            out.append(chat.create_chat_message("user", message))
+            out.append(BaseMessage("user", message))
 
         return out
 
@@ -35,4 +36,5 @@ class QAAgent:
         while self.redis.llen("togpt") == 0:
             pass
 
-        return self.redis.rpop("togpt")
+        msg = self.redis.rpop("togpt")
+        return BaseMessage("user", msg)

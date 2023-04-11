@@ -1,0 +1,7 @@
+version: 2
+authtoken:
+tunnels:
+  smsagi-server:
+    proto: http
+    addr: 8080
+    hostname:

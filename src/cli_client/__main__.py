@@ -17,7 +17,6 @@ from rich.prompt import Prompt
 from rich.text import Text
 
 from cli_client.redis import QAClient
-from lib.chat import create_chat_message
 
 # Create an argparse that has the boolean parameter --speak
 parser = argparse.ArgumentParser(description="Process arguments.")

@@ -5,5 +5,6 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Run the server
-COPY src/server .
-CMD ["python", "-m", "src/server"]
+COPY src/lib lib
+COPY src/server server
+CMD ["python", "-m", "server"]

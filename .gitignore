@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+ngrok.yml
+ngrok.yaml
 
 # C extensions
 *.so

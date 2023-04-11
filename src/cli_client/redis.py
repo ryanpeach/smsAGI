@@ -4,10 +4,10 @@ import threading
 from rich import Console
 from rich.Markdown import Markdown
 
-from lib.chat import ChatMessage, create_chat_message
+from langchain.chat_models.openai import BaseMessage
 from lib.redis import connect_to_redis
 
-def pretty_format_message(message: ChatMessage) -> Markdown:
+def pretty_format_message(message: BaseMessage) -> Markdown:
     role = message["role"]
     content = message["content"]
 
@@ -32,7 +32,7 @@ class QAClient:
         while True:
             if self.redis.llen("touser") > 0:
                 message = self.redis.rpop("touser")
-                msg = pretty_format_message(create_chat_message("assistant", message))
+                msg = pretty_format_message(BaseMessage("assistant", message))
                 with console_lock:
                     # with open(LOG_PATH, "a") as f:
                     #     f.write(json.dumps(msg) + "\n")

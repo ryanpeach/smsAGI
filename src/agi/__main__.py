@@ -1,14 +1,18 @@
 # REF: https://github.com/hwchase17/langchain/blob/master/docs/use_cases/agents/baby_agi.ipynb
+# REF: https://github.com/hwchase17/langchain/blob/66786b0f0fb91f346c00d860eb8472f940d37af8/docs/use_cases/agents/baby_agi_with_agent.ipynb
 
 import os
+from pathlib import Path
 import uuid
 from collections import deque
 from typing import Any, Dict, List, Optional, TypedDict
-from agi.redis import QAAgent
+from agi.tools import Tools
+from agi.prompts import Prompts
 
 import faiss
 from colorama import Fore, Style, init
-from langchain import LLMChain, OpenAI, PromptTemplate
+from langchain.chat_models import ChatOpenAI
+from langchain import LLMChain, PromptTemplate
 from langchain.chains.base import Chain
 from langchain.docstore import InMemoryDocstore
 from langchain.embeddings import OpenAIEmbeddings
@@ -16,17 +20,8 @@ from langchain.llms import BaseLLM
 from langchain.vectorstores import FAISS
 from langchain.vectorstores.base import VectorStore
 from pydantic import BaseModel, Field
-
-# Initialize colorama
-init(autoreset=True)
-
-# Define your embedding model
-embeddings_model = OpenAIEmbeddings()
-# Initialize the vectorstore as empty
-embedding_size = 1536
-index = faiss.IndexFlatL2(embedding_size)
-vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
-
+import argparse
+from langchain.agents import ZeroShotAgent, Tool, AgentExecutor
 
 class Task(TypedDict):
     """Task model."""
@@ -34,6 +29,47 @@ class Task(TypedDict):
     task_id: uuid.UUID
     task_name: str
 
+# Initialize colorama
+init(autoreset=True)
+
+# Set up the argument parser
+parser = argparse.ArgumentParser(description="Configure the BabyAGI agent.")
+parser.add_argument(
+    "--personality",
+    type=Path,
+    default=Path("personalities/default.yaml"),
+    help="Path to the personality file for smsAGI.",
+)
+parser.add_argument(
+    "--temperature", type=float, default=0, help="Temperature for the OpenAI model."
+)
+parser.add_argument(
+    "--max_iterations",
+    type=int,
+    default=3,
+    help="Maximum number of iterations for the BabyAGI agent.",
+)
+parser.add_argument(
+    "--embedding_size",
+    type=int,
+    default=1536,
+    help="Size of the embeddings for the FAISS index.",
+)
+parser.add_argument(
+    "--verbose", action="store_true", help="Enable verbose output for BabyAGI."
+)
+args = parser.parse_args()
+
+# Define your embedding model
+embeddings_model = OpenAIEmbeddings()
+# Initialize the vectorstore as empty
+embedding_size = args.embedding_size
+index = faiss.IndexFlatL2(embedding_size)
+vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
+tools_obj = Tools(args.personality)
+
+tools = tools_obj.get_tools()
+prompts = Prompts(args.personality)
 
 class TaskCreationChain(LLMChain):
     """Chain to generates tasks."""
@@ -41,26 +77,7 @@ class TaskCreationChain(LLMChain):
     @classmethod
     def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "TaskCreationChain":
         """Get the response parser."""
-        task_creation_template = (
-            "You are an task creation AI that uses the result of an execution agent"
-            " to create new tasks with the following objective: {objective},"
-            " The last completed task has the result: {result}."
-            " This result was based on this task description: {task_description}."
-            " These are incomplete tasks: {incomplete_tasks}."
-            " Based on the result, create new tasks to be completed"
-            " by the AI system that do not overlap with incomplete tasks."
-            " Return the tasks as an array."
-        )
-        prompt = PromptTemplate(
-            template=task_creation_template,
-            input_variables=[
-                "result",
-                "task_description",
-                "incomplete_tasks",
-                "objective",
-            ],
-        )
-        return cls(prompt=prompt, llm=llm, verbose=verbose)
+        return cls(prompt=prompts.get_task_creation_prompt(), llm=llm, verbose=verbose)
 
 
 class TaskPrioritizationChain(LLMChain):
@@ -69,39 +86,10 @@ class TaskPrioritizationChain(LLMChain):
     @classmethod
     def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "TaskPrioritizationChain":
         """Get the response parser."""
-        task_prioritization_template = (
-            "You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing"
-            " the following tasks: {task_names}."
-            " Consider the ultimate objective of your team: {objective}."
-            " Do not remove any tasks. Return the result as a numbered list, like:"
-            " #. First task"
-            " #. Second task"
-            " Start the task list with number {next_task_id}."
-        )
-        prompt = PromptTemplate(
-            template=task_prioritization_template,
-            input_variables=["task_names", "next_task_id", "objective"],
-        )
-        return cls(prompt=prompt, llm=llm, verbose=verbose)
+        return cls(prompt=prompts.get_task_prioritization_prompt(), llm=llm, verbose=verbose)
 
 
-class ExecutionChain(LLMChain):
-    """Chain to execute tasks."""
-
-    @classmethod
-    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "ExecutionChain":
-        """Get the response parser."""
-        execution_template = (
-            "You are an AI who performs one task based on the following objective: {objective}."
-            " Take into account these previously completed tasks: {context}."
-            " Your task: {task}."
-            " Response:"
-        )
-        prompt = PromptTemplate(
-            template=execution_template,
-            input_variables=["objective", "context", "task"],
-        )
-        return cls(prompt=prompt, llm=llm, verbose=verbose)
+prompt = tools_obj.get_zero_shot_prompt()
 
 
 def get_next_task(
@@ -169,47 +157,40 @@ def execute_task(
     return execution_chain.run(objective=objective, context=context, task=task)
 
 
-class BabyAGI(Chain):
+class BabyAGI(Chain, BaseModel):
     """Controller model for the BabyAGI agent."""
 
-    task_list: deque[Task] = Field(default_factory=deque)
+    task_list: deque = Field(default_factory=deque)
     task_creation_chain: TaskCreationChain = Field(...)
     task_prioritization_chain: TaskPrioritizationChain = Field(...)
-    execution_chain: ExecutionChain = Field(...)
+    execution_chain: AgentExecutor = Field(...)
+    task_id_counter: int = Field(1)
     vectorstore: VectorStore = Field(init=False)
-    max_iterations: Optional[int]
-    objective: str
-    _stop: bool
+    max_iterations: Optional[int] = None
 
-    def __init__(self, **data: Any) -> None:
-        """Initialize the model."""
-        super().__init__(**data)
-        self.task_list = deque()
-        self.task_prioritization_chain = TaskPrioritizationChain.from_llm(
-            self.task_prioritization_chain.llm
-        )
-        self.task_creation_chain = TaskCreationChain.from_llm(
-            self.task_creation_chain.llm
-        )
-        self.execution_chain = ExecutionChain.from_llm(self.execution_chain.llm)
-        self.vectorstore = VectorStore()
-        self.qaagent = QAAgent()
+    class Config:
+        """Configuration for this pydantic object."""
+        arbitrary_types_allowed = True
+
+    @property
+    def input_keys(self) -> List[str]:
+        return []
+
+    @property
+    def output_keys(self) -> List[str]:
+        return []
 
     def add_task(self, task: Task) -> None:
-        with self.threading_lock:
-            self.task_list.append(task)
+        self.task_list.append(task)
 
     def pop_task(self) -> Task:
-        with self.threading_lock:
-            return self.task_list.popleft()
+        return self.task_list.popleft()
 
     def get_tasks(self) -> List[Task]:
-        with self.threading_lock:
-            return list(self.task_list)
+        return list(self.task_list)
 
     def set_tasks(self, tasks: List[Task]) -> None:
-        with self.threading_lock:
-            self.task_list = deque(tasks)
+        self.task_list = deque(tasks)
 
     def _print_with_color(self, color: Fore, title: str, content: str) -> None:
         print(f"{color}{Style.BRIGHT}{title}{Style.RESET_ALL}")
@@ -280,88 +261,58 @@ class BabyAGI(Chain):
             )
         )
 
-    def _call(self):
+    def _call(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         num_iters = 0
-        with self.threading_lock:
-            stop = self._stop
-        while not stop:
+        while True:
             if self.task_list:
                 self._single_step()
             num_iters += 1
             if self.max_iterations is not None and num_iters == self.max_iterations:
                 print(f"{Fore.RED}{Style.BRIGHT}*****TASK ENDING*****{Style.RESET_ALL}")
                 break
-            with self.threading_lock:
-                stop = self._stop
+        return {}
 
     @classmethod
     def from_llm(
-        cls, llm: BaseLLM, vectorstore: VectorStore, verbose: bool = False, **kwargs
+        cls,
+        llm: BaseLLM,
+        vectorstore: VectorStore,
+        verbose: bool = False,
+        **kwargs
     ) -> "BabyAGI":
         """Initialize the BabyAGI Controller."""
-        task_creation_chain = TaskCreationChain.from_llm(llm, verbose=verbose)
+        task_creation_chain = TaskCreationChain.from_llm(
+            llm, verbose=verbose
+        )
         task_prioritization_chain = TaskPrioritizationChain.from_llm(
             llm, verbose=verbose
         )
-        execution_chain = ExecutionChain.from_llm(llm, verbose=verbose)
+        llm_chain = LLMChain(llm=llm, prompt=prompt)
+        tool_names = [tool.name for tool in tools]
+        agent = ZeroShotAgent(llm_chain=llm_chain, allowed_tools=tool_names)
+        agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools, verbose=True)
         return cls(
             task_creation_chain=task_creation_chain,
             task_prioritization_chain=task_prioritization_chain,
-            execution_chain=execution_chain,
+            execution_chain=agent_executor,
             vectorstore=vectorstore,
-            **kwargs,
+            **kwargs
         )
 
 
 # For debugging this code in isolation
 if __name__ == "__main__":
 
-
-    # Set up the argument parser
-    parser = argparse.ArgumentParser(description="Configure the BabyAGI agent.")
-    parser.add_argument(
-        "--sms",
-        type=str,
-        default="",
-        help="Phone number to send SMS messages to. Otherwise, just use the CLI client.",
-    )
-    parser.add_argument(
-        "--objective",
-        type=str,
-        default="Write a weather report for SF today",
-        help="Initial objective for BabyAGI.",
-    )
-    parser.add_argument(
-        "--temperature", type=float, default=0, help="Temperature for the OpenAI model."
-    )
-    parser.add_argument(
-        "--max_iterations",
-        type=int,
-        default=3,
-        help="Maximum number of iterations for the BabyAGI agent.",
-    )
-    parser.add_argument(
-        "--embedding_size",
-        type=int,
-        default=1536,
-        help="Size of the embeddings for the FAISS index.",
-    )
-    parser.add_argument(
-        "--verbose", action="store_true", help="Enable verbose output for BabyAGI."
-    )
-    args = parser.parse_args()
-
-
     # Initialize the BabyAGI agent using the parsed arguments
     index = faiss.IndexFlatL2(args.embedding_size)
     embeddings_model = OpenAIEmbeddings()
     vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
-    llm = OpenAI(temperature=args.temperature)
+    llm = ChatOpenAI(temperature=args.temperature)
     baby_agi = BabyAGI.from_llm(
         llm,
         vectorstore,
         verbose=args.verbose,
         max_iterations=args.max_iterations,
-        logger=twilio_client,
+        objective=prompts.get_objective(),
     )
-    baby_agi({"objective": args.objective})
+    baby_agi(inputs={})

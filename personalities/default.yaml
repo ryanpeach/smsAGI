@@ -1,0 +1,54 @@
+objective: "Ask the user for a task to complete and then complete it."
+prompts:
+  task_prioritization:
+    template: |
+      You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing
+       the following tasks: {task_names}.
+       Consider the ultimate objective of your team: {objective}.
+       Do not remove any tasks. Return the result as a numbered list, like:
+       #. First task
+       #. Second task
+       Start the task list with number {next_task_id}.
+    input_variables:
+      - "task_names"
+      - "objective"
+      - "next_task_id"
+  task_creation:
+    template: |
+      You are an task creation AI that uses the result of an execution agent
+       to create new tasks with the following objective: {objective},
+       The last completed task has the result: {result}.
+       This result was based on this task description: {task_description}.
+       These are incomplete tasks: {incomplete_tasks}.
+       Based on the result, create new tasks to be completed
+       by the AI system that do not overlap with incomplete tasks.
+       Return the tasks as an array.
+    input_variables:
+      - "objective"
+      - "result"
+      - "task_description"
+      - "incomplete_tasks"
+tools:
+  prompt:
+    prefix: "You are an AI who performs one task based on the following objective: {objective}. Take into account these previously completed tasks: {context}."
+    suffix: |
+      Question: {task}
+      {agent_scratchpad}
+    input_variables:
+      - "objective"
+      - "context"
+      - "task"
+      - "agent_scratchpad"
+  search:
+    enabled: false
+    description: "useful for when you need to answer questions about current events"
+  send_message:
+    enabled: false
+    description: "Send a message to the user."
+  todo:
+    enabled: false
+    description: "useful for when you need to come up with todo lists. Input: an objective to create a todo list for. Output: a todo list for that objective. Please be very clear what the objective is!"
+    prompt:
+      template: "You are a planner who is an expert at coming up with a todo list for a given objective. Come up with a todo list for this objective: {objective}"
+      input_variables:
+        - "objective"

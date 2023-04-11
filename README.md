@@ -18,11 +18,10 @@ OPENAI_API_KEY=<your OpenAI API key>
 ## Ngrok
 
 1. Download and install ngrok from https://ngrok.com/download.
-2. Create a `.env` file in the root directory of the project and add the following:
+2. Create a `ngrok.yml` file in the root directory of the project. See https://ngrok.com/docs/ngrok-agent/config/ and `ngrok.yml.template` for more information.
 
-```
-NGROK_AUTH_TOKEN=<your ngrok auth token>
-```
+3. If you pay for a premium ngrok account, you can use a persistent URL by adding a `hostname` to your `ngrok.yml` file
+
 
 ## Twilio
 
@@ -35,7 +34,16 @@ NGROK_AUTH_TOKEN=<your ngrok auth token>
 ```
 TWILIO_ACCOUNT_SID=<your Twilio account SID>
 TWILIO_AUTH_TOKEN=<your Twilio auth token>
-TWILIO_PHONE_NUMBER=<your Twilio phone number>
+TWILIO_FROM_PHONE_NUMBER=<your Twilio phone number>
+TWILIO_TO_PHONE_NUMBER=<your verified phone number>
+```
+
+## Serpapi
+
+If you would like to search the internet, please provide a SERPAPI_API_KEY in your `.env` file.
+
+```
+SERPAPI_API_KEY=<your Serpapi API key>
 ```
 
 ## Docker Compose
