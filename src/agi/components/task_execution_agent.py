@@ -1,7 +1,6 @@
 from pathlib import Path
 from lib.prompts import Prompts
 from agi.tools import Tools
-from langchain.memory import ConversationBufferMemory
 from langchain import BaseLLM
 from langchain.chat_models import BaseLLM
 from langchain.agents import initialize_agent, AgentType, Task
@@ -17,7 +16,6 @@ class TaskExecutionAgent:
         self.tools = tools.get_tools()
         self.task_list = task_list
         self.vectorstore = vectorstore
-        self.conversation_buffer = ConversationBufferMemory(memory_key="chat_history")
         self.agent_chain = initialize_agent(tools, llm, agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION, verbose=True, memory=memory)
         self.agent = agent
         self.goals = Goals(agent=agent, session=session)
@@ -31,7 +29,7 @@ class TaskExecutionAgent:
         ]
         return [tool for tool in tools if tool is not None]
 
-    def execute_task(
+    def _execute_task(
         self,
         task: Task,
         k: int = 5
@@ -40,7 +38,7 @@ class TaskExecutionAgent:
         context = self.vectorstore.get_top_tasks(query=self.agent.objective, k=k)
         return self.agent_chain.run(objective=self.goals.get_prompt(), context=context, task=task["task_name"])
 
-    def single_step(self):
+    def execute_task(self):
         # Step 1: Pull the first task
         task = self.task_list.pop_task()
         self.print_next_task(task)

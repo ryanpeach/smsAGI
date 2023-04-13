@@ -4,7 +4,6 @@ class UserAgent:
         self.tools = tools.get_tools()
         self.task_list = task_list
         self.vectorstore = vectorstore
-        self.conversation_buffer = ConversationBufferMemory(memory_key="chat_history")
         self.agent_chain = initialize_agent(tools, llm, agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION, verbose=True, memory=memory)
         self.agent = agent
         self.goals = Goals(agent=agent, session=session)
@@ -17,7 +16,7 @@ class UserAgent:
         ]
         return [tool for tool in tools if tool is not None]
 
-    def get_tasks_from_user(self) -> List[Task]:
+    def get_tasks_from_user(self):
         # Get tasks from the user
         user_messages = self.qaagent.receive_all_user_responses()
         for user_msg in user_messages:

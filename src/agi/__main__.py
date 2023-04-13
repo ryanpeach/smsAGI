@@ -67,90 +67,9 @@ prompts = Prompts(args.personality)
 prompt = tools_obj.get_zero_shot_prompt()
 
 
-def get_next_task(
-    task_creation_chain: TaskCreationChain,
-    prev_task_result: Dict,
-    task_description: str,
-    task_list: List[Task],
-    objective: str,
-) -> List[Task]:
-    """Get the next task."""
-    incomplete_tasks = ", ".join([task["task_name"] for task in task_list])
-    response = task_creation_chain.run(
-        result=prev_task_result,
-        task_description=task_description,
-        incomplete_tasks=incomplete_tasks,
-        objective=objective,
-    )
-    new_tasks = response.split("\n")
-    return [
-        Task(task_name=task_name, task_id=uuid.uuid4())
-        for task_name in new_tasks
-        if task_name.strip()
-    ]
 
 
 
-
-
-class BabyAGI(Chain, BaseModel):
-    """Controller model for the BabyAGI agent."""
-
-    task_list: deque = Field(default_factory=deque)
-    task_creation_chain: TaskCreationChain = Field(...)
-    task_prioritization_chain: TaskPrioritizationChain = Field(...)
-    execution_chain: AgentExecutor = Field(...)
-    task_id_counter: int = Field(1)
-    vectorstore: VectorStore = Field(init=False)
-    max_iterations: Optional[int] = None
-
-    class Config:
-        """Configuration for this pydantic object."""
-        arbitrary_types_allowed = True
-
-    @property
-    def input_keys(self) -> List[str]:
-        return []
-
-    @property
-    def output_keys(self) -> List[str]:
-        return []
-    def _single_step(self):
-        self.print_task_list()
-
-        # Step 4: Create new tasks and reprioritize task list
-        new_tasks = get_next_task(
-            self.task_creation_chain,
-            task_result,
-            task["task_name"],
-            list(self.get_tasks()),
-            self.objective,
-        )
-
-        for new_task in new_tasks:
-            self.add_task(new_task)
-
-        self.set_tasks(
-            (
-                prioritize_tasks(
-                    self.task_prioritization_chain,
-                    this_task_id,
-                    list(self.task_list),
-                    self.objective,
-                )
-            )
-        )
-
-    def _call(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        num_iters = 0
-        while True:
-            if self.task_list:
-                self._single_step()
-            num_iters += 1
-            if self.max_iterations is not None and num_iters == self.max_iterations:
-                print(f"{Fore.RED}{Style.BRIGHT}*****TASK ENDING*****{Style.RESET_ALL}")
-                break
-        return {}
 
     @classmethod
     def from_llm(

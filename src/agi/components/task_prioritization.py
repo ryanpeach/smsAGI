@@ -4,20 +4,18 @@ from langchain.agent import Task
 from langchain import BaseLLM, LLMChain
 import uuid
 
-class TaskPrioritizationChain(LLMChain):
+class TaskPrioritizationChain:
     """Chain to prioritize tasks."""
 
-    @classmethod
-    def from_llm(cls, prompts: Prompts, llm: BaseLLM, verbose: bool = True) -> "TaskPrioritizationChain":
-        """Get the response parser."""
-        return cls(prompt=prompts.get_task_prioritization_prompt(), llm=llm, verbose=verbose)
+    def __init__(self, prompts: Prompts, llm: BaseLLM, verbose: bool = True):
+        self.chain = LLMChain(prompt=prompts.get_task_prioritization_prompt(), llm=llm, verbose=verbose)
 
     def prioritize_tasks(
         self,
         this_task_id: int,
-        task_list: List[Task],
+        task_list: TaskList,
         objective: str,
-    ) -> List[Task]:
+    ) -> None:
         """Prioritize tasks."""
         task_names = [t["task_name"] for t in task_list]
         next_task_id = int(this_task_id) + 1
@@ -34,4 +32,5 @@ class TaskPrioritizationChain(LLMChain):
                 task_id = uuid.UUID(task_parts[0].strip())
                 task_name = task_parts[1].strip()
                 prioritized_task_list.append(Task(task_id=task_id, task_name=task_name))
-        return prioritized_task_list
+
+        task_list.set_task_prioriziation(prioritized_task_list)

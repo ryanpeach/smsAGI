@@ -15,7 +15,6 @@ class VectorStoreMemory:
         self.index = faiss.IndexFlatL2(embedding_size)
         self.vectorstore = FAISS(self.embeddings_model.embed_query, self.index, self.in_memory_docstore, {})
 
-
     def get_top_tasks(self, query: str, k: int) -> List[Task]:
         """Get the top k tasks based on the query."""
         results = self.vectorstore.similarity_search_with_score(query, k=k)
