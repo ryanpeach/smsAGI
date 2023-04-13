@@ -19,7 +19,6 @@ OPENAI_API_KEY=<your OpenAI API key>
 
 1. Download and install ngrok from https://ngrok.com/download.
 2. Create a `ngrok.yml` file in the root directory of the project. See https://ngrok.com/docs/ngrok-agent/config/ and `ngrok.yml.template` for more information.
-
 3. If you pay for a premium ngrok account, you can use a persistent URL by adding a `hostname` to your `ngrok.yml` file
 
 
@@ -67,3 +66,13 @@ We are also `mypy` compliant, so please run `mypy` before committing:
 `mypy .`
 
 We will work on testing, run `pytest` to run the tests.
+
+# Debugging
+
+## Tracing
+
+To start tracing, set the `LANGCHAIN_HANDLER=langchain` environment variable.
+
+Then run `langchain-server` to start the server.
+
+Then to run just the AGI, run `PYTHONPATH=src python -m agi`

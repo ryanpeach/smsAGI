@@ -6,19 +6,16 @@ from pathlib import Path
 import uuid
 from collections import deque
 from typing import Any, Dict, List, Optional, TypedDict
-from agi.tools import Tools
-from agi.prompts import Prompts
+from agi.components.task_execution_agent import Tools
+from lib.prompts import Prompts
 
-import faiss
 from colorama import Fore, Style, init
 from langchain.chat_models import ChatOpenAI
 from langchain import LLMChain, PromptTemplate
 from langchain.chains.base import Chain
-from langchain.docstore import InMemoryDocstore
-from langchain.embeddings import OpenAIEmbeddings
+
 from langchain.llms import BaseLLM
-from langchain.vectorstores import FAISS
-from langchain.vectorstores.base import VectorStore
+
 from pydantic import BaseModel, Field
 import argparse
 from langchain.agents import ZeroShotAgent, Tool, AgentExecutor
@@ -60,33 +57,11 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# Define your embedding model
-embeddings_model = OpenAIEmbeddings()
-# Initialize the vectorstore as empty
-embedding_size = args.embedding_size
-index = faiss.IndexFlatL2(embedding_size)
-vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
 tools_obj = Tools(args.personality)
 
 tools = tools_obj.get_tools()
 prompts = Prompts(args.personality)
 
-class TaskCreationChain(LLMChain):
-    """Chain to generates tasks."""
-
-    @classmethod
-    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "TaskCreationChain":
-        """Get the response parser."""
-        return cls(prompt=prompts.get_task_creation_prompt(), llm=llm, verbose=verbose)
-
-
-class TaskPrioritizationChain(LLMChain):
-    """Chain to prioritize tasks."""
-
-    @classmethod
-    def from_llm(cls, llm: BaseLLM, verbose: bool = True) -> "TaskPrioritizationChain":
-        """Get the response parser."""
-        return cls(prompt=prompts.get_task_prioritization_prompt(), llm=llm, verbose=verbose)
 
 
 prompt = tools_obj.get_zero_shot_prompt()
@@ -115,46 +90,7 @@ def get_next_task(
     ]
 
 
-def prioritize_tasks(
-    task_prioritization_chain: TaskPrioritizationChain,
-    this_task_id: int,
-    task_list: List[Task],
-    objective: str,
-) -> List[Task]:
-    """Prioritize tasks."""
-    task_names = [t["task_name"] for t in task_list]
-    next_task_id = int(this_task_id) + 1
-    response = task_prioritization_chain.run(
-        task_names=task_names, next_task_id=next_task_id, objective=objective
-    )
-    new_tasks = response.split("\n")
-    prioritized_task_list = []
-    for task_string in new_tasks:
-        if not task_string.strip():
-            continue
-        task_parts = task_string.strip().split(".", 1)
-        if len(task_parts) == 2:
-            task_id = uuid.UUID(task_parts[0].strip())
-            task_name = task_parts[1].strip()
-            prioritized_task_list.append(Task(task_id=task_id, task_name=task_name))
-    return prioritized_task_list
 
-
-def _get_top_tasks(vectorstore, query: str, k: int) -> List[Task]:
-    """Get the top k tasks based on the query."""
-    results = vectorstore.similarity_search_with_score(query, k=k)
-    if not results:
-        return []
-    sorted_results, _ = zip(*sorted(results, key=lambda x: x[1], reverse=True))
-    return [item.metadata["task"] for item in sorted_results]
-
-
-def execute_task(
-    vectorstore, execution_chain: LLMChain, objective: str, task: Task, k: int = 5
-) -> str:
-    """Execute a task."""
-    context = _get_top_tasks(vectorstore, query=objective, k=k)
-    return execution_chain.run(objective=objective, context=context, task=task)
 
 
 class BabyAGI(Chain, BaseModel):
@@ -179,64 +115,8 @@ class BabyAGI(Chain, BaseModel):
     @property
     def output_keys(self) -> List[str]:
         return []
-
-    def add_task(self, task: Task) -> None:
-        self.task_list.append(task)
-
-    def pop_task(self) -> Task:
-        return self.task_list.popleft()
-
-    def get_tasks(self) -> List[Task]:
-        return list(self.task_list)
-
-    def set_tasks(self, tasks: List[Task]) -> None:
-        self.task_list = deque(tasks)
-
-    def _print_with_color(self, color: Fore, title: str, content: str) -> None:
-        print(f"{color}{Style.BRIGHT}{title}{Style.RESET_ALL}")
-        print(content)
-
-    def print_task_list(self):
-        task_list_str = "\n".join(
-            [f"{t['task_id']}: {t['task_name']}" for t in self.task_list]
-        )
-        self._print_with_color(Fore.MAGENTA, "*****TASK LIST*****", task_list_str)
-
-    def print_next_task(self, task: Task):
-        self._print_with_color(
-            Fore.GREEN, "*****NEXT TASK*****", f"{task['task_id']}: {task['task_name']}"
-        )
-
-    def print_task_result(self, result: str):
-        self._print_with_color(Fore.YELLOW, "*****TASK RESULT*****", result)
-
     def _single_step(self):
         self.print_task_list()
-
-        # Step 1: Pull the first task
-        task = self.pop_task()
-        self.print_next_task(task)
-
-        # Step 2: Execute the task
-        task_result = execute_task(
-            self.vectorstore, self.execution_chain, self.objective, task["task_name"]
-        )
-
-        this_task_id = int(task["task_id"])
-        self.print_task_result(task_result)
-
-        # Step 3: Store the result in Pinecone
-        result_id = f"result_{task['task_id']}"
-        self.vectorstore.add_texts(
-            texts=[task_result],
-            metadatas=[{"task": task["task_name"]}],
-            ids=[result_id],
-        )
-
-        # Get tasks from the user
-        user_messages = self.qaagent.receive_all_user_responses()
-        for user_msg in user_messages:
-            self.add_task(Task(task_id=uuid.uuid4(), task_name=f"Respond to the user, who said: {user_msg}"))
 
         # Step 4: Create new tasks and reprioritize task list
         new_tasks = get_next_task(
@@ -304,7 +184,6 @@ class BabyAGI(Chain, BaseModel):
 if __name__ == "__main__":
 
     # Initialize the BabyAGI agent using the parsed arguments
-    index = faiss.IndexFlatL2(args.embedding_size)
     embeddings_model = OpenAIEmbeddings()
     vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
     llm = ChatOpenAI(temperature=args.temperature)

@@ -17,15 +17,6 @@ class Tools:
         self.personality = yaml.safe_load(personality.read_text())
         self.default_personality = yaml.safe_load(self.DEFAULT_PERSONALITY.read_text())
 
-    def get_tools(self) -> list[Tool]:
-        """Gets a list of tools from the personality file."""
-        tools = [
-            self._get_search_tool(),
-            self._get_todo_tool(),
-            self._get_send_message_tool(),
-        ]
-        return [tool for tool in tools if tool is not None]
-
     def get_zero_shot_prompt(self) -> PromptTemplate:
         """A prompt that teaches the agi to use the tools."""
         personality_tools = self.personality.get("tools", {})

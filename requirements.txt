@@ -7,3 +7,4 @@ twilio
 colorama
 redis
 rich
+sqlalchemy[mypy]
