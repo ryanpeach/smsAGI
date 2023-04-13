@@ -5,7 +5,7 @@ from langchain import BaseLLM
 from langchain.chat_models import BaseLLM
 from langchain.agents import initialize_agent, AgentType, Task
 from lib.prompts import Prompts
-from agi.components.memory import VectorStoreMemory
+from agi.memory import VectorStoreMemory
 from lib.sql.goals import Goals
 from lib.sql.task_list import TaskList
 from lib.sql import SuperAgent
@@ -18,6 +18,7 @@ class TaskExecutionAgent:
         self.vectorstore = vectorstore
         self.agent_chain = initialize_agent(tools, llm, agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION, verbose=True, memory=memory)
         self.agent = agent
+        self.chain = LLMChain(prompt=prompts.get_task_creation_prompt(), llm=llm, verbose=verbose)
         self.goals = Goals(agent=agent, session=session)
 
     def get_tools(self) -> list[Tool]:
@@ -58,3 +59,27 @@ class TaskExecutionAgent:
             metadatas=[{"task": task["task_name"]}],
             ids=[result_id],
         )
+
+    def create_next_task(
+        self,
+        prev_task_result: Dict,
+        task_description: str,
+        task_list: TaskList,
+        goals: Goals
+    ) -> None:
+        """Get the next task."""
+        incomplete_tasks = ", ".join([task["task_name"] for task in task_list])
+        response = self.chain.run(
+            result=prev_task_result,
+            task_description=task_description,
+            incomplete_tasks=incomplete_tasks,
+            objective=goals.get_prompt(),
+        )
+        new_tasks = response.split("\n")
+        out = [
+            Task(task_name=task_name, task_id=uuid.uuid4())
+            for task_name in new_tasks
+            if task_name.strip()
+        ]
+        for new_task in out:
+            task_list.add_task(new_task)

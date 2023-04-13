@@ -4,7 +4,7 @@ from langchain.agent import Task
 from langchain import BaseLLM, LLMChain
 import uuid
 
-class TaskPrioritizationChain:
+class TaskPrioritizationAgent:
     """Chain to prioritize tasks."""
 
     def __init__(self, prompts: Prompts, llm: BaseLLM, verbose: bool = True):

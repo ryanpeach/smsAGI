@@ -6,7 +6,7 @@ from pathlib import Path
 import uuid
 from collections import deque
 from typing import Any, Dict, List, Optional, TypedDict
-from agi.components.task_execution_agent import Tools
+from agi.agents.task_execution_agent import Tools
 from lib.prompts import Prompts
 
 from colorama import Fore, Style, init
