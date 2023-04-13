@@ -15,6 +15,7 @@ from langchain import LLMChain, PromptTemplate
 from langchain.chains.base import Chain
 
 from langchain.llms import BaseLLM
+from lib.sql import SuperAgent
 
 from pydantic import BaseModel, Field
 import argparse
@@ -51,3 +52,8 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+# Iterate over all super agents and run the task prioritization and task execution agents
+agents = SuperAgent.get_all_agents()
+for agent in agents:
+    task_prioritization_agent = TaskPrioritizationAgent(agent=agent, personality=args.personality).run()
+    task_execution_agent = TaskExecutionAgent(agent=agent, personality=args.personality).run()

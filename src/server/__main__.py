@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 
 @app.route("/health")
-def health():
+async def health():
     return {
         "statusCode": 200,
         "body": "Healthy!",
@@ -14,12 +14,13 @@ def health():
 
 
 @app.route("/sms", methods=["POST"])
-def sms_reply():
+async def sms_reply():
     # Get the message from the request
     incoming_msg = request.values.get("Body", "").lower()
-
-    qaclient = QAClient()
-    qaclient.send_message(incoming_msg)
+    phone_number = request.values.get("From", "")
+    user = User.get_from_phone_number(phone_number)
+    user_agent = UserAgent(agent=user.primary_agent)
+    await user_agent.arun(incoming_msg)
 
     return {
         "statusCode": 200,

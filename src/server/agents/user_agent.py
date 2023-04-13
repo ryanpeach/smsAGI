@@ -2,7 +2,6 @@ class UserAgent:
 
     def __init__(self, agent: SuperAgent, tools: Tools, session: Session, llm: BaseLLM, vectorstore: VectorStoreMemory, task_list: TaskList):
         self.tools = tools.get_tools()
-        self.task_list = task_list
         self.vectorstore = vectorstore
         self.agent_chain = initialize_agent(tools, llm, agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION, verbose=True, memory=memory)
         self.agent = agent
@@ -16,9 +15,8 @@ class UserAgent:
         ]
         return [tool for tool in tools if tool is not None]
 
-    def get_tasks_from_user(self):
+    async def arun(self, user_msg: str):
         # Get tasks from the user
-        user_messages = self.qaagent.receive_all_user_responses()
-        for user_msg in user_messages:
-            self.conversation_buffer.add_to_buffer(user_msg)
-            self.agent_chain.run(objective=self.goals.get_prompt(), context=self.vectorstore.get_top_tasks(query=self.agent.objective, k=5), task=user_msg)
+        objective = await self.goals.get_prompt()
+        context = await self.vectorstore.get_top_tasks(query=objective, k=5)
+        return await self.agent_chain.arun(objective=objective, context=context, task=user_msg)
