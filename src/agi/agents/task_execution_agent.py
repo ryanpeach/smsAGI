@@ -1,28 +1,32 @@
 from pathlib import Path
+from typing import Dict
 from lib.prompts import Prompts
-from agi.tools import Tools
-from langchain import BaseLLM
+from lib.tools import Tools
+from langchain import BaseLLM, LLMChain
 from langchain.chat_models import BaseLLM
-from langchain.agents import initialize_agent, AgentType, Task
+from langchain.agents import initialize_agent, AgentType, Task, Tool
 from lib.prompts import Prompts
-from agi.memory import VectorStoreMemory
 from lib.sql.goals import Goals
 from lib.sql.task_list import TaskList
 from lib.sql import SuperAgent
+import uuid
+
 
 class TaskExecutionAgent:
-
-    def __init__(self, agent: SuperAgent, tools: Tools, session: Session, llm: BaseLLM, vectorstore: VectorStoreMemory, task_list: TaskList):
-        self.tools = tools.get_tools()
-        self.task_list = task_list
-        self.vectorstore = vectorstore
-        self.agent_chain = initialize_agent(tools, llm, agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION, verbose=True, memory=memory)
+    def __init__(self, agent: SuperAgent, session: Session, llm: BaseLLM):
+        self.tools = Tools.get_tools()
+        self.task_list = TaskList(agent=agent, session=session)
+        self.agent_chain = initialize_agent(
+            self.tools, llm, agent=AgentType.REACT_DESCRIPTION, verbose=True
+        )
         self.agent = agent
-        self.chain = LLMChain(prompt=prompts.get_task_creation_prompt(), llm=llm, verbose=verbose)
+        self.chain = LLMChain(
+            prompt=Prompts.get_task_creation_prompt(), llm=llm, verbose=True
+        )
         self.goals = Goals(agent=agent, session=session)
 
     def get_tools(self) -> list[Tool]:
-        """Gets a list of tools from the personality file."""
+        """Gets a list of tools from the config file."""
         tools = [
             self.tools._get_search_tool(),
             self.tools._get_todo_tool(),
@@ -33,11 +37,12 @@ class TaskExecutionAgent:
     def _execute_task(
         self,
         task: Task,
-        k: int = 5
     ) -> str:
         """Execute a task."""
-        context = self.vectorstore.get_top_tasks(query=self.agent.objective, k=k)
-        return self.agent_chain.run(objective=self.goals.get_prompt(), context=context, task=task["task_name"])
+        # context = self.vectorstore.get_top_tasks(query=self.agent.objective, k=k)
+        return self.agent_chain.run(
+            objective=self.goals.get_prompt(), task=task["task_name"]
+        )
 
     def execute_task(self):
         # Step 1: Pull the first task
@@ -45,27 +50,23 @@ class TaskExecutionAgent:
         self.print_next_task(task)
 
         # Step 2: Execute the task
-        task_result = self.execute_task(
-            self.objective, task
-        )
-
-        this_task_id = int(task["task_id"])
+        task_result = self._execute_task(task)
         self.print_task_result(task_result)
 
         # Step 3: Store the result in Pinecone
-        result_id = f"result_{task['task_id']}"
-        self.vectorstore.add_texts(
-            texts=[task_result],
-            metadatas=[{"task": task["task_name"]}],
-            ids=[result_id],
-        )
+        # result_id = f"result_{task['task_id']}"
+        # self.vectorstore.add_texts(
+        #     texts=[task_result],
+        #     metadatas=[{"task": task["task_name"]}],
+        #     ids=[result_id],
+        # )
 
     def create_next_task(
         self,
         prev_task_result: Dict,
         task_description: str,
         task_list: TaskList,
-        goals: Goals
+        goals: Goals,
     ) -> None:
         """Get the next task."""
         incomplete_tasks = ", ".join([task["task_name"] for task in task_list])

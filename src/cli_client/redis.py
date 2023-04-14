@@ -7,6 +7,7 @@ from rich.Markdown import Markdown
 from langchain.chat_models.openai import BaseMessage
 from lib.redis import connect_to_redis
 
+
 def pretty_format_message(message: BaseMessage) -> Markdown:
     role = message["role"]
     content = message["content"]

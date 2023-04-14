@@ -3,16 +3,14 @@ prompts:
   task_prioritization:
     template: |
       You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing
-       the following tasks: {task_names}.
-       Consider the ultimate objective of your team: {objective}.
-       Do not remove any tasks. Return the result as a numbered list, like:
-       #. First task
-       #. Second task
-       Start the task list with number {next_task_id}.
+       the following task: {task_name}.
+      Please give it a new priority, which is a floating point number between 1 and 4, where 1 is most important and 4 is least important.
+      Please consider these existing tasks and their priorities when deciding on the new priority:
+      {other_tasks}
     input_variables:
-      - "task_names"
+      - "task_name"
+      - "other_tasks"
       - "objective"
-      - "next_task_id"
   task_creation:
     template: |
       You are an task creation AI that uses the result of an execution agent

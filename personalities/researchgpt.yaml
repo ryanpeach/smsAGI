@@ -1,8 +1,0 @@
-objective: "Ask the user for a topic to research. Send them messages when new information comes to light."
-tools:
-  search:
-    enabled: true
-  send_message:
-    enabled: true
-  todo:
-    enabled: true

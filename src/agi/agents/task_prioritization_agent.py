@@ -1,23 +1,33 @@
-from typing import List
 from lib.prompts import Prompts
 from langchain.agent import Task
 from langchain import BaseLLM, LLMChain
 import uuid
+from lib.sql import SuperAgent, TaskListItem
+from lib.sql.goals import Goals
+from lib.sql.task_list import TaskList
+
 
 class TaskPrioritizationAgent:
     """Chain to prioritize tasks."""
 
-    def __init__(self, prompts: Prompts, llm: BaseLLM, verbose: bool = True):
-        self.chain = LLMChain(prompt=prompts.get_task_prioritization_prompt(), llm=llm, verbose=verbose)
+    def __init__(self, agent: SuperAgent, session: Session, llm: BaseLLM):
+        self.task_list = TaskList(agent=agent, session=session)
+        self.goals = Goals(agent=agent, session=session)
+        self.chain = LLMChain(
+            prompt=Prompts.get_task_prioritization_prompt(), llm=llm, verbose=True
+        )
+
+    def _prioritize_task(
+        self,
+        task: TaskListItem,
+    ):
+        pass
 
     def prioritize_tasks(
         self,
-        this_task_id: int,
-        task_list: TaskList,
-        objective: str,
     ) -> None:
         """Prioritize tasks."""
-        task_names = [t["task_name"] for t in task_list]
+        task_names = [t["task_name"] for t in self.task_list.get_tasks()]
         next_task_id = int(this_task_id) + 1
         response = self.run(
             task_names=task_names, next_task_id=next_task_id, objective=objective

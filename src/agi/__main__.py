@@ -27,19 +27,13 @@ init(autoreset=True)
 # Set up the argument parser
 parser = argparse.ArgumentParser(description="Configure the BabyAGI agent.")
 parser.add_argument(
-    "--personality",
+    "--config",
     type=Path,
-    default=Path("personalities/default.yaml"),
-    help="Path to the personality file for smsAGI.",
+    default=Path("config/default.yaml"),
+    help="Path to the config file for smsAGI.",
 )
 parser.add_argument(
     "--temperature", type=float, default=0, help="Temperature for the OpenAI model."
-)
-parser.add_argument(
-    "--max_iterations",
-    type=int,
-    default=3,
-    help="Maximum number of iterations for the BabyAGI agent.",
 )
 parser.add_argument(
     "--embedding_size",
@@ -53,7 +47,36 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Iterate over all super agents and run the task prioritization and task execution agents
-agents = SuperAgent.get_all_agents()
-for agent in agents:
-    task_prioritization_agent = TaskPrioritizationAgent(agent=agent, personality=args.personality).run()
-    task_execution_agent = TaskExecutionAgent(agent=agent, personality=args.personality).run()
+llm = ChatOpenAI(
+    temperature=args.temperature,
+)
+all_agents_cache = {}
+while True:
+    all_agents = SuperAgent.get_all_agents()
+    for agent in all_agents:
+        # Check if the agent is already in the cache
+        if agent.id in all_agents_cache:
+            # Load the agents from the cache
+            task_prioritization_agent, task_execution_agent, memory = all_agents_cache[
+                agent.id
+            ]
+        else:
+            # Initialize the agents
+            memory = VectorStoreMemory(
+                embedding_size=args.embedding_size,
+            )
+            task_prioritization_agent = TaskPrioritizationAgent(
+                agent=agent, config=args.config, memory=memory
+            )
+            task_execution_agent = TaskExecutionAgent(
+                agent=agent, config=args.config, memory=memory
+            )
+            all_agents_cache[agent.id] = (
+                task_prioritization_agent,
+                task_execution_agent,
+                memory,
+            )
+
+        # Run the agents
+        task_prioritization_agent.run()
+        task_execution_agent.run()

@@ -6,10 +6,11 @@ from langchain.agents import tool
 
 # Set environment variables for your credentials
 # Read more at http://twil.io/secure
-account_sid = os.environ['TWILIO_ACCOUNT_SID']
-auth_token = os.environ['TWILIO_AUTH_TOKEN']
+account_sid = os.environ["TWILIO_ACCOUNT_SID"]
+auth_token = os.environ["TWILIO_AUTH_TOKEN"]
 client = Client(account_sid, auth_token)
 qaagent = QAAgent()
+
 
 @tool
 def send_message(message: str, wait_for_response: bool) -> str:
@@ -20,8 +21,8 @@ def send_message(message: str, wait_for_response: bool) -> str:
     """
     client.messages.create(
         body=message,
-        from_=os.environ['TWILIO_FROM_PHONE_NUMBER'],
-        to=os.environ['TWILIO_TO_PHONE_NUMBER']
+        from_=os.environ["TWILIO_FROM_PHONE_NUMBER"],
+        to=os.environ["TWILIO_TO_PHONE_NUMBER"],
     )
     if not wait_for_response:
         return "You have sent the message to the user. You may or may not receive a response. You may ask other questions without waiting for a response. You may also send other messages to the user without waiting for a response. "
