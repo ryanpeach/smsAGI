@@ -1,42 +1,100 @@
-objective: "Ask the user for a task to complete and then complete it."
 prompts:
+  goals:
+    template: |
+      You are an AI tasked with achieving the following goals provided by the user:
+
+      {goals}
+    input_variables:
+      - "goals"
+    llm:
+      temperature: 0.0
+      model_name: "gpt-3.5-turbo"
   task_prioritization:
     template: |
-      You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing
-       the following task: {task_name}.
+      You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing the following task:
+
+      {task_description}
+
+      You have the following objective:
+
+      {objective}
+
       Please give it a new priority, which is a floating point number between 0 and 1, where 1 is most important and 0 is least important.
       Please consider these existing tasks and their priorities when deciding on the new priority:
-      {other_tasks}
+
+      {other_tasks_table}
+
+      Please respond only with the new priority, which is a floating point number. Do not include any other text.
     input_variables:
-      - "task_name"
-      - "other_tasks"
+      - "task_description"
+      - "other_tasks_table"
       - "objective"
+    llm:
+      temperature: 0.0
+      model_name: "gpt-3.5-turbo"
   task_creation:
     template: |
       You are an task creation AI that uses the result of an execution agent
-       to create new tasks with the following objective: {objective},
-       The last completed task has the result: {result}.
-       This result was based on this task description: {task_description}.
-       These are incomplete tasks: {incomplete_tasks}.
-       Based on the result, create new tasks to be completed
-       by the AI system that do not overlap with incomplete tasks.
-       Return the tasks as an array.
+      to create new tasks with the following objective:
+
+      {objective}
+
+      The last completed task returned the result:
+
+      {prev_result}
+
+      This result was based on this task description:
+
+      {task_description}
+
+      These are some existing incomplete tasks:
+
+      {incomplete_tasks}
+
+      These are some existing completed tasks:
+
+      {completed_tasks}
+
+      Based on the result, create new tasks to be completed
+      by the AI system that do not overlap with incomplete tasks.
+      Return the tasks as a new line separated list.
+      Do not return any other text besides the tasks themselves.
     input_variables:
       - "objective"
       - "result"
       - "task_description"
       - "incomplete_tasks"
+      - "completed_tasks"
+    llm:
+      temperature: 0.0
+      model_name: "gpt-3.5-turbo"
 tools:
   prompt:
-    prefix: "You are an AI who performs one task based on the following objective: {objective}. Take into account these previously completed tasks: {context}."
+    prefix: |
+      You are an AI who performs one task based on the following objective:
+
+      {objective}
+
+      Take into account these previously completed tasks:
+
+      {previously_completed_tasks}
+
     suffix: |
-      Question: {task}
+      Your task to perform is:
+
+      {task_description}
+
+      You may use the following area as a scratchpad to store information:
+
       {agent_scratchpad}
     input_variables:
       - "objective"
-      - "context"
-      - "task"
+      - "previously_completed_tasks"
+      - "task_description"
       - "agent_scratchpad"
+    llm:
+      temperature: 0.0
+      model_name: "gpt-3.5-turbo"
   search:
     enabled: false
     description: "useful for when you need to answer questions about current events"
@@ -50,3 +108,6 @@ tools:
       template: "You are a planner who is an expert at coming up with a todo list for a given objective. Come up with a todo list for this objective: {objective}"
       input_variables:
         - "objective"
+      llm:
+        temperature: 0.0
+        model_name: "gpt-3.5-turbo"

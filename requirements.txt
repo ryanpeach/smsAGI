@@ -4,8 +4,8 @@ langchain
 PyYAML
 faiss-cpu
 twilio
-colorama
 redis
-rich
 sqlalchemy[mypy]
 loguru
+types-PyYAML
+tiktoken

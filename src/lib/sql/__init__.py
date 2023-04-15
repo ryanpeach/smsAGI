@@ -1,6 +1,6 @@
 from typing import Callable, Generator, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, Float
+from sqlalchemy import Boolean, CheckConstraint, create_engine, Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.engine import Engine
@@ -8,8 +8,14 @@ from  sqlalchemy.sql.expression import func
 from sqlalchemy.engine import URL
 import datetime
 import os
+from langchain.schema import (
+    BaseMessage,
+    AIMessage,
+    HumanMessage,
+    SystemMessage
+)
 
-from lib.prompts import Prompts
+from lib.config.prompts import Prompts
 
 Base = declarative_base()
 
@@ -19,6 +25,8 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     phoneNumber = Column(String, unique=True)
+    # Users can have more than one agent
+    # But only one primary agent
     primary_agent_id = Column(Integer, ForeignKey('super_agent.id'))
     primary_agent: "SuperAgent" = relationship("SuperAgent", foreign_keys=[primary_agent_id])
 
@@ -39,6 +47,7 @@ class SuperAgent(Base):
     name = Column(String)
     user_id = Column(Integer, ForeignKey('user.id'))
     user: User = relationship("User")
+    wait_for_response = Column(Boolean, default=False)
 
     @staticmethod
     def get_random_super_agent(session: Session) -> "SuperAgent":
@@ -57,7 +66,7 @@ class Goal(Base):
     objective = Column(String)
 
     @staticmethod
-    def get_goals(session: Session, agent: Optional[SuperAgent]) -> List[str]:
+    def get_goals(session: Session, agent: Optional[SuperAgent]) -> List["Goal"]:
         """Get all goals associated with this super agent."""
         if agent is None:
             return session.query(Goal).all()
@@ -69,25 +78,64 @@ class Goal(Base):
         out = ""
         for goal in goals:
             out += f"* {goal}"
-        return prompts.get_goals().format(goals=goals)
+        prompt_template, _ = prompts.get_goals()
+        return prompt_template.format(goals=goals)
 
-# # Define ThreadItem table
-# class ThreadItem(Base):
-#     __tablename__ = 'thread_item'
-#     id = Column(Integer, primary_key=True)
-#     super_agent_id = Column(Integer, ForeignKey('super_agent.id'))
-#     super_agent = relationship("SuperAgent")
-#     role = Column(
-#         String,
-#         CheckConstraint(
-#             "role IN ('user', 'assistant', 'system')",
-#             name="check_role_in_allowed_values"
-#         ),
-#         nullable=False
-#     )
-#     content = Column(String)
-#     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+# Define ThreadItem table
+class ThreadItem(Base):
+    __tablename__ = 'thread_item'
+    id = Column(Integer, primary_key=True)
+    super_agent_id = Column(Integer, ForeignKey('super_agent.id'))
+    super_agent: SuperAgent = relationship("SuperAgent")
+    role = Column(
+        String,
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'system')",
+            name="check_role_in_allowed_values"
+        ),
+        nullable=False
+    )
+    content = Column(String)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
+    @staticmethod
+    def create(session: Session, super_agent: SuperAgent, msg: BaseMessage) -> "ThreadItem":
+        """Create a new thread item."""
+        if isinstance(msg, AIMessage):
+            role = "assistant"
+        elif isinstance(msg, HumanMessage):
+            role = "user"
+        elif isinstance(msg, SystemMessage):
+            role = "system"
+        else:
+            raise TypeError(f"Unknown message type. {type(msg)}")
+        thread_item = ThreadItem(
+            super_agent=super_agent,
+            role=role,
+            content=msg.content
+        )
+        session.add(thread_item)
+        session.commit()
+        return thread_item
+
+    @staticmethod
+    def get_all(session: Session, super_agent: Optional[SuperAgent] = None) -> List[BaseMessage]:
+        """Get all thread items associated with this super agent."""
+        if super_agent is None:
+            out = session.query(ThreadItem).order_by(ThreadItem.created_at.asc()).all()
+        else:
+            out = session.query(ThreadItem).filter(ThreadItem.super_agent_id == super_agent.id).order_by(ThreadItem.created_at.asc()).all()
+        out_base_msg: List[BaseMessage] = []
+        for thread_item in out:
+            if thread_item.role == "assistant":
+                out_base_msg.append(AIMessage(content=thread_item.content))
+            elif thread_item.role == "user":
+                out_base_msg.append(HumanMessage(content=thread_item.content))
+            elif thread_item.role == "system":
+                out_base_msg.append(SystemMessage(content=thread_item.content))
+            else:
+                raise TypeError(f"Unknown role. {thread_item.role}")
+        return out_base_msg
 
 # Define TaskListItem table
 class TaskListItem(Base):
@@ -102,32 +150,17 @@ class TaskListItem(Base):
     completed_at = Column(DateTime,default=None, nullable=True)
 
     @staticmethod
-    def create(session: Session, super_agent: SuperAgent, description: str) -> "TaskListItem":
-        """Create a new task list item."""
-        task_list_item = TaskListItem(super_agent=super_agent, description=description, priority=0.5)
-        session.add(task_list_item)
-        return task_list_item
-
-    @staticmethod
-    def get_random_task_list_item(session: Session, agent: Optional[SuperAgent] = None) -> Optional["TaskListItem"]:
+    def get_random_task_list_item(session: Session, k: int = 10, agent: Optional[SuperAgent] = None) -> List["TaskListItem"]:
         """Get a random sample of k tasks."""
         if agent is not None:
-            out = session.query(TaskListItem).filter(TaskListItem.super_agent == agent).filter(TaskListItem.completed_at != None).order_by(func.random()).first()
-        else:
-            out = session.query(TaskListItem).filter(TaskListItem.completed_at != None).order_by(func.random()).first()
-
-        if out is None:
-            return None
-        elif isinstance(out, TaskListItem):
-            return out
-        else:
-            raise ValueError("Unexpected type returned from query")
+            return session.query(TaskListItem).filter(TaskListItem.super_agent == agent).filter(TaskListItem.completed_at != None).order_by(func.random()).limit(k).all()
+        return session.query(TaskListItem).filter(TaskListItem.completed_at != None).order_by(func.random()).limit(k).all()
 
     @staticmethod
-    def get_top_task_list_item(session: Session, agent: Optional[SuperAgent] = None) -> Optional["TaskListItem"]:
+    def get_top_task_list_item(session: Session, super_agent: Optional[SuperAgent] = None) -> Optional["TaskListItem"]:
         """Get the task with the highest priority."""
-        if agent is not None:
-            out = session.query(TaskListItem).filter(TaskListItem.super_agent == agent).filter(TaskListItem.completed_at != None).order_by(TaskListItem.priority.desc()).first()
+        if super_agent is not None:
+            out = session.query(TaskListItem).filter(TaskListItem.super_agent == super_agent).filter(TaskListItem.completed_at != None).order_by(TaskListItem.priority.desc()).first()
         else:
             out = session.query(TaskListItem).filter(TaskListItem.completed_at != None).order_by(TaskListItem.priority.desc()).first()
 
@@ -154,7 +187,7 @@ class TaskListItem(Base):
         self.completed_at = datetime.datetime.utcnow()
 
     @staticmethod
-    def task_list_to_str(task_list: List["TaskListItem"]) -> str:
+    def task_list_to_table(task_list: List["TaskListItem"]) -> str:
         """Convert a list of tasks to a string as a markdown table."""
         sort_func: Callable[[TaskListItem], float] = lambda x: float(x.priority if x.priority is not None else 0.5)
         sorted_task_list = sorted(task_list, key=sort_func, reverse=True)

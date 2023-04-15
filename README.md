@@ -34,7 +34,7 @@ OPENAI_API_KEY=<your OpenAI API key>
 TWILIO_ACCOUNT_SID=<your Twilio account SID>
 TWILIO_AUTH_TOKEN=<your Twilio auth token>
 TWILIO_FROM_PHONE_NUMBER=<your Twilio phone number>
-TWILIO_TO_PHONE_NUMBER=<your verified phone number>
+TWILIO_TO_PHONE_NUMBER=<your phone number>
 ```
 
 ## Serpapi
