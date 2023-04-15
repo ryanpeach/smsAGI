@@ -2,6 +2,6 @@ pytest-cov
 pytest
 black
 mypy
-detect-secrets
+detect-secrets[word_list]
 pre-commit
 pytest-cov
