@@ -4,18 +4,20 @@
 import os
 from pathlib import Path
 import uuid
+from loguru import logger
 from collections import deque
-from typing import Any, Dict, List, Optional, TypedDict
-from agi.agents.task_execution_agent import Tools
+from typing import Any, Dict, Generator, List, Optional, TypedDict
+from agi.agents.task_execution_agent import TaskExecutionAgent, Tools
+from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
 from lib.prompts import Prompts
-
+from sqlalchemy.orm import sessionmaker, Session
 from colorama import Fore, Style, init
 from langchain.chat_models import ChatOpenAI
 from langchain import LLMChain, PromptTemplate
 from langchain.chains.base import Chain
 
 from langchain.llms import BaseLLM
-from lib.sql import SuperAgent
+from lib.sql import SuperAgent, TaskListItem, create_engine_from_env
 
 from pydantic import BaseModel, Field
 import argparse
@@ -50,33 +52,17 @@ args = parser.parse_args()
 llm = ChatOpenAI(
     temperature=args.temperature,
 )
-all_agents_cache = {}
+engine = create_engine_from_env()
+Session = sessionmaker(bind=engine)
 while True:
-    all_agents = SuperAgent.get_all_agents()
-    for agent in all_agents:
-        # Check if the agent is already in the cache
-        if agent.id in all_agents_cache:
-            # Load the agents from the cache
-            task_prioritization_agent, task_execution_agent, memory = all_agents_cache[
-                agent.id
-            ]
-        else:
-            # Initialize the agents
-            memory = VectorStoreMemory(
-                embedding_size=args.embedding_size,
-            )
-            task_prioritization_agent = TaskPrioritizationAgent(
-                agent=agent, config=args.config, memory=memory
-            )
-            task_execution_agent = TaskExecutionAgent(
-                agent=agent, config=args.config, memory=memory
-            )
-            all_agents_cache[agent.id] = (
-                task_prioritization_agent,
-                task_execution_agent,
-                memory,
-            )
-
-        # Run the agents
-        task_prioritization_agent.run()
-        task_execution_agent.run()
+    # Then run the task execution agent with the top priority task
+    with Session() as session:
+        agent = SuperAgent.get_random_super_agent(session=session)
+        top_priority_task_item: Optional[TaskListItem] = TaskListItem.get_top_task_list_item(session=session, agent=agent)
+        if top_priority_task_item is None:
+            logger.info(f"Super Agent: ({agent.id},{agent.name}) -> No tasks to execute.")
+            continue
+        task_execution_agent = TaskExecutionAgent(
+            agent=agent, session=session, llm=llm, config=args.config
+        ).run(top_priority_task_item)
+        session.commit()

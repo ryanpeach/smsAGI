@@ -8,3 +8,4 @@ colorama
 redis
 rich
 sqlalchemy[mypy]
+loguru

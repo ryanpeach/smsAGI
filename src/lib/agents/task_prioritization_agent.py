@@ -1,30 +1,25 @@
+from pathlib import Path
 from lib.prompts import Prompts
-from langchain.agent import Task
+from langchain.agents import Task
 from langchain import BaseLLM, LLMChain
 import uuid
 from lib.sql import SuperAgent, TaskListItem
 from lib.sql.goals import Goals
-from lib.sql.task_list import TaskList
+from sqlalchemy.orm import Session
 
 
 class TaskPrioritizationAgent:
     """Chain to prioritize tasks."""
 
-    def __init__(self, agent: SuperAgent, session: Session, llm: BaseLLM):
-        self.task_list = TaskList(agent=agent, session=session)
+    def __init__(self, agent: SuperAgent, session: Session, llm: BaseLLM, config: Path):
         self.goals = Goals(agent=agent, session=session)
         self.chain = LLMChain(
             prompt=Prompts.get_task_prioritization_prompt(), llm=llm, verbose=True
         )
 
-    def _prioritize_task(
+    def run(
         self,
-        task: TaskListItem,
-    ):
-        pass
-
-    def prioritize_tasks(
-        self,
+        task_list_item: TaskListItem,
     ) -> None:
         """Prioritize tasks."""
         task_names = [t["task_name"] for t in self.task_list.get_tasks()]

@@ -4,7 +4,7 @@ prompts:
     template: |
       You are an task prioritization AI tasked with cleaning the formatting of and reprioritizing
        the following task: {task_name}.
-      Please give it a new priority, which is a floating point number between 1 and 4, where 1 is most important and 4 is least important.
+      Please give it a new priority, which is a floating point number between 0 and 1, where 1 is most important and 0 is least important.
       Please consider these existing tasks and their priorities when deciding on the new priority:
       {other_tasks}
     input_variables:

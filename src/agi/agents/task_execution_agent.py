@@ -1,21 +1,20 @@
 from pathlib import Path
 from typing import Dict
 from lib.prompts import Prompts
+from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
 from lib.tools import Tools
 from langchain import BaseLLM, LLMChain
-from langchain.chat_models import BaseLLM
 from langchain.agents import initialize_agent, AgentType, Task, Tool
 from lib.prompts import Prompts
 from lib.sql.goals import Goals
-from lib.sql.task_list import TaskList
-from lib.sql import SuperAgent
+from sqlalchemy.orm import Session
+from lib.sql import SuperAgent, TaskListItem
 import uuid
 
 
 class TaskExecutionAgent:
-    def __init__(self, agent: SuperAgent, session: Session, llm: BaseLLM):
+    def __init__(self, agent: SuperAgent, session: Session, llm: BaseLLM, config: Path):
         self.tools = Tools.get_tools()
-        self.task_list = TaskList(agent=agent, session=session)
         self.agent_chain = initialize_agent(
             self.tools, llm, agent=AgentType.REACT_DESCRIPTION, verbose=True
         )
@@ -24,6 +23,7 @@ class TaskExecutionAgent:
             prompt=Prompts.get_task_creation_prompt(), llm=llm, verbose=True
         )
         self.goals = Goals(agent=agent, session=session)
+        self.task_prioritization_agent = TaskPrioritizationAgent(agent=agent, session=session, llm=llm, config=config)
 
     def get_tools(self) -> list[Tool]:
         """Gets a list of tools from the config file."""
@@ -36,7 +36,7 @@ class TaskExecutionAgent:
 
     def _execute_task(
         self,
-        task: Task,
+        task: TaskListItem,
     ) -> str:
         """Execute a task."""
         # context = self.vectorstore.get_top_tasks(query=self.agent.objective, k=k)
@@ -44,43 +44,31 @@ class TaskExecutionAgent:
             objective=self.goals.get_prompt(), task=task["task_name"]
         )
 
-    def execute_task(self):
-        # Step 1: Pull the first task
-        task = self.task_list.pop_task()
-        self.print_next_task(task)
-
-        # Step 2: Execute the task
-        task_result = self._execute_task(task)
-        self.print_task_result(task_result)
-
-        # Step 3: Store the result in Pinecone
-        # result_id = f"result_{task['task_id']}"
-        # self.vectorstore.add_texts(
-        #     texts=[task_result],
-        #     metadatas=[{"task": task["task_name"]}],
-        #     ids=[result_id],
-        # )
-
-    def create_next_task(
+    def _create_next_task(
         self,
         prev_task_result: Dict,
-        task_description: str,
-        task_list: TaskList,
-        goals: Goals,
+        task_list_item: TaskListItem,
     ) -> None:
         """Get the next task."""
-        incomplete_tasks = ", ".join([task["task_name"] for task in task_list])
         response = self.chain.run(
             result=prev_task_result,
-            task_description=task_description,
-            incomplete_tasks=incomplete_tasks,
-            objective=goals.get_prompt(),
+            task_description=task_list_item.name,
+            objective=self.goals.get_prompt(),
         )
         new_tasks = response.split("\n")
         out = [
-            Task(task_name=task_name, task_id=uuid.uuid4())
+            TaskListItem.create()
             for task_name in new_tasks
             if task_name.strip()
         ]
         for new_task in out:
             task_list.add_task(new_task)
+
+    def run(
+            self,
+            task_list_item: TaskListItem,
+    ) -> TaskListItem:
+        """Run a task."""
+        result = self._execute_task(task=task_list_item)
+        TaskListItem = self._create_next_task(prev_task_result=result, task_list=task_list_item)
+        self.task_prioritization_agent.run(task_list_item)

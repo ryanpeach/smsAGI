@@ -1,0 +1,187 @@
+from typing import Callable, Generator, List, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from sqlalchemy.engine import Engine
+from  sqlalchemy.sql.expression import func
+from sqlalchemy.engine import URL
+import datetime
+import os
+
+from lib.prompts import Prompts
+
+Base = declarative_base()
+
+# Define User table
+class User(Base):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    phoneNumber = Column(String, unique=True)
+    primary_agent_id = Column(Integer, ForeignKey('super_agent.id'))
+    primary_agent: "SuperAgent" = relationship("SuperAgent", foreign_keys=[primary_agent_id])
+
+    @staticmethod
+    def get_from_phone_number(session: Session, phone_number: str) -> "User":
+        """Get the user associated with this phone number."""
+        out = session.query(User).filter(User.phoneNumber == phone_number).first()
+        if isinstance(out, User):
+            return out
+        raise KeyError("No user found.")
+
+
+# Define Agent table
+class SuperAgent(Base):
+    """A super agent is a set of agents that work together to achieve a goal."""
+    __tablename__ = 'super_agent'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    user_id = Column(Integer, ForeignKey('user.id'))
+    user: User = relationship("User")
+
+    @staticmethod
+    def get_random_super_agent(session: Session) -> "SuperAgent":
+        """Get a random super agent."""
+        out = session.query(SuperAgent).order_by(func.random()).first()
+        if isinstance(out, SuperAgent):
+            return out
+        raise KeyError("No super agents found.")
+
+# Define Goal table
+class Goal(Base):
+    __tablename__ = 'goal'
+    id = Column(Integer, primary_key=True)
+    super_agent_id = Column(Integer, ForeignKey('super_agent.id'))
+    super_agent: SuperAgent = relationship("SuperAgent")
+    objective = Column(String)
+
+    @staticmethod
+    def get_goals(session: Session, agent: Optional[SuperAgent]) -> List[str]:
+        """Get all goals associated with this super agent."""
+        if agent is None:
+            return session.query(Goal).all()
+        return session.query(Goal).filter(Goal.super_agent_id == agent.id).all()
+
+    @staticmethod
+    def get_prompt(goals: List["Goal"], prompts: Prompts) -> str:
+        """Get the goals as a bulleted list."""
+        out = ""
+        for goal in goals:
+            out += f"* {goal}"
+        return prompts.get_goals().format(goals=goals)
+
+# # Define ThreadItem table
+# class ThreadItem(Base):
+#     __tablename__ = 'thread_item'
+#     id = Column(Integer, primary_key=True)
+#     super_agent_id = Column(Integer, ForeignKey('super_agent.id'))
+#     super_agent = relationship("SuperAgent")
+#     role = Column(
+#         String,
+#         CheckConstraint(
+#             "role IN ('user', 'assistant', 'system')",
+#             name="check_role_in_allowed_values"
+#         ),
+#         nullable=False
+#     )
+#     content = Column(String)
+#     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
+# Define TaskListItem table
+class TaskListItem(Base):
+    __tablename__ = 'task_list_item'
+    id = Column(Integer, primary_key=True)
+    super_agent_id = Column(Integer, ForeignKey('super_agent.id'))
+    super_agent: SuperAgent = relationship("SuperAgent")
+    description = Column(String, nullable=False)
+    priority = Column(Float, default=0.5, nullable=False)
+    earliest_start_time = Column(DateTime, default=None, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime,default=None, nullable=True)
+
+    @staticmethod
+    def create(session: Session, super_agent: SuperAgent, description: str) -> "TaskListItem":
+        """Create a new task list item."""
+        task_list_item = TaskListItem(super_agent=super_agent, description=description, priority=0.5)
+        session.add(task_list_item)
+        return task_list_item
+
+    @staticmethod
+    def get_random_task_list_item(session: Session, agent: Optional[SuperAgent] = None) -> Optional["TaskListItem"]:
+        """Get a random sample of k tasks."""
+        if agent is not None:
+            out = session.query(TaskListItem).filter(TaskListItem.super_agent == agent).filter(TaskListItem.completed_at != None).order_by(func.random()).first()
+        else:
+            out = session.query(TaskListItem).filter(TaskListItem.completed_at != None).order_by(func.random()).first()
+
+        if out is None:
+            return None
+        elif isinstance(out, TaskListItem):
+            return out
+        else:
+            raise ValueError("Unexpected type returned from query")
+
+    @staticmethod
+    def get_top_task_list_item(session: Session, agent: Optional[SuperAgent] = None) -> Optional["TaskListItem"]:
+        """Get the task with the highest priority."""
+        if agent is not None:
+            out = session.query(TaskListItem).filter(TaskListItem.super_agent == agent).filter(TaskListItem.completed_at != None).order_by(TaskListItem.priority.desc()).first()
+        else:
+            out = session.query(TaskListItem).filter(TaskListItem.completed_at != None).order_by(TaskListItem.priority.desc()).first()
+
+        if out is None:
+            return None
+        elif isinstance(out, TaskListItem):
+            return out
+        else:
+            raise ValueError("Unexpected type returned from query")
+
+    def set_priority(self, priority: float):
+        """
+        Set the priority of this task.
+        Priority must be a float between 0 and 1.
+        """
+        if priority <= 1 or priority >= 0:
+            raise ValueError("Priority must be between 0 and 1")
+        self.priority = priority
+
+    def set_completed(self):
+        """Set the completed time to now."""
+        if self.completed_at is not None:
+            raise ValueError("This task has already been completed")
+        self.completed_at = datetime.datetime.utcnow()
+
+    @staticmethod
+    def task_list_to_str(task_list: List["TaskListItem"]) -> str:
+        """Convert a list of tasks to a string as a markdown table."""
+        sort_func: Callable[[TaskListItem], float] = lambda x: float(x.priority if x.priority is not None else 0.5)
+        sorted_task_list = sorted(task_list, key=sort_func, reverse=True)
+        task_list_str = "| Task | Priority (higher priority) |"
+        task_list_str += "| --- | --- |"
+        for task in sorted_task_list:
+            task_list_str += f"| {task.description} | {task.priority} |"
+        return task_list_str
+
+
+def create_engine_from_env() -> Engine:
+    POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
+    POSTGRES_USER = os.environ["POSTGRES_USER"]
+    POSTGRES_DB = os.environ["POSTGRES_DB"]
+    POSTGRES_URL = os.environ["POSTGRES_URL"]
+
+    url_object = URL.create(
+        "postgresql",
+        username=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+        host=POSTGRES_URL,
+        database=POSTGRES_DB,
+    )
+
+    return create_engine(url_object)
+
+if __name__ == "__main__":
+    # Create the tables in the database
+    engine = create_engine_from_env()
+    Base.metadata.create_all(engine)
