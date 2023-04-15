@@ -1,18 +1,15 @@
 from pathlib import Path
 from typing import List
-from langchain.agents import initialize_agent, AgentType, Tool
+
+from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.chat_models.openai import ChatOpenAI
-from lib.sql import Goal, SuperAgent, TaskListItem, ThreadItem
-from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
-from lib.config.tools import Tools
-from lib.config.prompts import Prompts
+from langchain.schema import BaseMessage, HumanMessage, SystemMessage
 from sqlalchemy.orm import Session
 
-from langchain.schema import BaseMessage
-from langchain.schema import (
-    HumanMessage,
-    SystemMessage
-)
+from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
+from lib.config.prompts import Prompts
+from lib.config.tools import Tools
+from lib.sql import Goal, SuperAgent, TaskListItem, ThreadItem
 
 
 class UserAgent:
@@ -20,14 +17,19 @@ class UserAgent:
         self.tools = self.get_tools(config=config)
         self.llm = self.get_llm(config=config)
         self.user_agent = initialize_agent(
-            self.tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True
+            self.tools,
+            self.llm,
+            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            verbose=True,
         )
         self.super_agent = super_agent
         self.session = session
         goals = Goal.get_goals(session=self.session, agent=self.super_agent)
         prompts = Prompts(config=config)
         self.objective = Goal.get_prompt(goals=goals, prompts=prompts)
-        self.task_prioritization_agent = TaskPrioritizationAgent(super_agent=super_agent, session=session, config=config)
+        self.task_prioritization_agent = TaskPrioritizationAgent(
+            super_agent=super_agent, session=session, config=config
+        )
 
     @staticmethod
     def get_llm(config: Path) -> ChatOpenAI:
@@ -47,6 +49,7 @@ class UserAgent:
     async def arun(self, user_msg: str):
         # Get past messages from the database and assemble a message list
         thread = ThreadItem.get_all(session=self.session, super_agent=self.super_agent)
+
         def assemble_messages() -> List[BaseMessage]:
             messages: List[BaseMessage] = [
                 SystemMessage(content=self.objective),
@@ -54,6 +57,7 @@ class UserAgent:
                 HumanMessage(content=user_msg),
             ]
             return messages
+
         messages = assemble_messages()
         num_tokens = self.llm.get_num_tokens_from_messages(messages=messages)
         if self.llm.max_tokens is not None:

@@ -1,14 +1,15 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
-import yaml
 from pathlib import Path
+from typing import Optional, Tuple
+
+import yaml
 from langchain import PromptTemplate
 from langchain.chat_models.openai import ChatOpenAI
 
 from lib.config import Config
 
-class Prompts(Config):
 
+class Prompts(Config):
     def _get_prompt_template(self, prompt_name: str) -> PromptTemplate:
         config_prompts = self.config.get("prompts", {})
         default_prompts = self.default_config["prompts"]
@@ -17,9 +18,13 @@ class Prompts(Config):
         default_prompt = default_prompts[prompt_name]
 
         prompt_template = prompt.get("template", default_prompt["template"])
-        prompt_input_variables = prompt.get("input_variables", default_prompt["input_variables"])
+        prompt_input_variables = prompt.get(
+            "input_variables", default_prompt["input_variables"]
+        )
 
-        return PromptTemplate(template=prompt_template, input_variables=prompt_input_variables)
+        return PromptTemplate(
+            template=prompt_template, input_variables=prompt_input_variables
+        )
 
     def _get_prompt_llm(self, prompt_name: str) -> ChatOpenAI:
         config_prompts = self.config.get("prompts", {})
@@ -34,7 +39,7 @@ class Prompts(Config):
         llm_model_name = llm.get("model_name", default_llm["model_name"])
         llm_temperature = llm.get("temperature", default_llm["temperature"])
 
-        return ChatOpenAI(model_name=llm_model_name, temperature=llm_temperature) # type: ignore
+        return ChatOpenAI(model_name=llm_model_name, temperature=llm_temperature)  # type: ignore
 
     def get_task_prioritization_prompt(self) -> Tuple[PromptTemplate, ChatOpenAI]:
         """
@@ -53,7 +58,6 @@ class Prompts(Config):
         prompt_template = self._get_prompt_template("task_creation")
         llm = self._get_prompt_llm("task_creation")
         return prompt_template, llm
-
 
     def get_goals(self) -> Tuple[PromptTemplate, ChatOpenAI]:
         """

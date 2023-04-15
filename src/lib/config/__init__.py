@@ -1,14 +1,13 @@
-from typing import Optional
-import yaml
 from pathlib import Path
+from typing import Optional
+
+import yaml
 
 DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config/default.yaml"
-CONFIG_MEMO = {
-    DEFAULT_CONFIG: yaml.safe_load(DEFAULT_CONFIG.read_text())
-}
+CONFIG_MEMO = {DEFAULT_CONFIG: yaml.safe_load(DEFAULT_CONFIG.read_text())}
+
 
 class Config:
-
     def __init__(self, config: Optional[Path] = None) -> None:
         self.config_file = config
         if config is not None:
