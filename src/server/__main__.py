@@ -4,12 +4,11 @@ from flask import Flask, request
 from sqlalchemy.orm import sessionmaker
 from twilio.rest import Client
 
-from lib.sql import Goal, SuperAgent, ThreadItem, User, create_engine_from_env
+from lib.sql import ENGINE, Goal, SuperAgent, ThreadItem, User
 from server.agents.user_agent import UserAgent
 
 # On startup, we need to create a couple objects
-engine = create_engine_from_env()
-_Session = sessionmaker(bind=engine)
+_Session = sessionmaker(bind=ENGINE)
 
 app = Flask(__name__)
 CONFIG = None

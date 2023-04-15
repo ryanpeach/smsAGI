@@ -26,13 +26,13 @@ Base = declarative_base()
 
 # Define User table
 class User(Base):
-    __tablename__ = "user"
+    __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     name = Column(String)
     phoneNumber = Column(String, unique=True)
     # Users can have more than one agent
     # But only one primary agent
-    primary_agent_id = Column(Integer, ForeignKey("super_agent.id"))
+    primary_agent_id = Column(Integer, ForeignKey("super_agents.id"))
     primary_agent: "SuperAgent" = relationship(
         "SuperAgent", foreign_keys=[primary_agent_id]
     )
@@ -50,27 +50,29 @@ class User(Base):
 class SuperAgent(Base):
     """A super agent is a set of agents that work together to achieve a goal."""
 
-    __tablename__ = "super_agent"
+    __tablename__ = "super_agents"
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    user_id = Column(Integer, ForeignKey("user.id"))
-    user: User = relationship("User")
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user: User = relationship("User", foreign_keys=[user_id])
     wait_for_response = Column(Boolean, default=False)
 
     @staticmethod
-    def get_random_super_agent(session: Session) -> "SuperAgent":
+    def get_random_super_agent(session: Session) -> Optional["SuperAgent"]:
         """Get a random super agent."""
         out = session.query(SuperAgent).order_by(func.random()).first()
         if isinstance(out, SuperAgent):
             return out
-        raise KeyError("No super agents found.")
+        elif out is None:
+            return None
+        raise TypeError("Unexpected type.")
 
 
 # Define Goal table
 class Goal(Base):
-    __tablename__ = "goal"
+    __tablename__ = "goals"
     id = Column(Integer, primary_key=True)
-    super_agent_id = Column(Integer, ForeignKey("super_agent.id"))
+    super_agent_id = Column(Integer, ForeignKey("super_agents.id"))
     super_agent: SuperAgent = relationship("SuperAgent")
     objective = Column(String)
 
@@ -93,9 +95,9 @@ class Goal(Base):
 
 # Define ThreadItem table
 class ThreadItem(Base):
-    __tablename__ = "thread_item"
+    __tablename__ = "thread_items"
     id = Column(Integer, primary_key=True)
-    super_agent_id = Column(Integer, ForeignKey("super_agent.id"))
+    super_agent_id = Column(Integer, ForeignKey("super_agents.id"))
     super_agent: SuperAgent = relationship("SuperAgent")
     role = Column(
         String,
@@ -157,9 +159,9 @@ class ThreadItem(Base):
 
 # Define TaskListItem table
 class TaskListItem(Base):
-    __tablename__ = "task_list_item"
+    __tablename__ = "task_list_items"
     id = Column(Integer, primary_key=True)
-    super_agent_id = Column(Integer, ForeignKey("super_agent.id"))
+    super_agent_id = Column(Integer, ForeignKey("super_agents.id"))
     super_agent: SuperAgent = relationship("SuperAgent")
     description = Column(String, nullable=False)
     priority = Column(Float, default=0.5, nullable=False)
@@ -263,7 +265,6 @@ def create_engine_from_env() -> Engine:
     return create_engine(url_object)
 
 
-if __name__ == "__main__":
-    # Create the tables in the database
-    engine = create_engine_from_env()
-    Base.metadata.create_all(engine)
+# Create the tables in the database
+ENGINE = create_engine_from_env()
+Base.metadata.create_all(ENGINE)

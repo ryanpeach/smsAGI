@@ -9,3 +9,4 @@ sqlalchemy[mypy]
 loguru
 types-PyYAML
 tiktoken
+psycopg2-binary

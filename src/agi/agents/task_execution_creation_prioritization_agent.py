@@ -7,11 +7,11 @@ from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.chat_models import ChatOpenAI
 from sqlalchemy.orm import Session
 
-from agi.twilio import WAITING_FOR_USER_RESPONSE
 from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
 from lib.config.prompts import Prompts
 from lib.config.tools import Tools
 from lib.sql import Goal, SuperAgent, TaskListItem
+from lib.twilio import WAITING_FOR_USER_RESPONSE
 
 
 class TaskExecutionCreationPrioritizationAgent:

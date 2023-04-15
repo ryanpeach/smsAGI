@@ -9,25 +9,45 @@ services:
   #   networks:
   #     - smsagi-network
 
+  langchain-db:
+    image: postgres:14.1
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - 5432:5432
+    networks:
+      - smsagi-network
+    restart: always
+
   smsagi-server:
     build:
       context: .
       dockerfile: deploy/server.dockerfile
     container_name: smsagi-server
     env_file: .env
+    restart: always
     ports:
       - "8080:8080"
     networks:
       - smsagi-network
+    depends_on:
+      - langchain-db
 
   smsagi-agi:
     build:
       context: .
       dockerfile: deploy/agi.dockerfile
     env_file: .env
+    restart: always
     container_name: smsagi-agi
     networks:
       - smsagi-network
+
+    # The smsagi-server creates initial database items, so we need to wait for it to be ready
+    depends_on:
+      - smsagi-server
 
   ngrok:
     image: ngrok/ngrok:latest
@@ -43,6 +63,7 @@ services:
       - 4040:4040
     networks:
       - smsagi-network
+    restart: always
 
   # Langchain tracing
   # REF: https://github.com/agola11/langchain/blob/master/langchain/docker-compose.yaml
@@ -56,6 +77,8 @@ services:
       - PUBLIC_DEV_MODE=true
     depends_on:
       - langchain-backend
+    restart: always
+
   langchain-backend:
     image: notlangchain/langchainplus:latest
     environment:
@@ -63,16 +86,11 @@ services:
       - LANGCHAIN_ENV=local
     ports:
       - 8000:8000
+    networks:
+      - smsagi-network
     depends_on:
       - langchain-db
-  langchain-db:
-    image: postgres:14.1
-    environment:
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_DB=postgres
-    ports:
-      - 5432:5432
+    restart: always
 
 networks:
   smsagi-network:

@@ -8,8 +8,8 @@ from langchain.agents import Tool, ZeroShotAgent
 from langchain.chat_models import ChatOpenAI
 from langchain.chat_models.openai import ChatOpenAI
 
-from agi.twilio import send_message
 from lib.config import Config
+from lib.twilio import send_message
 
 
 class Tools(Config):
