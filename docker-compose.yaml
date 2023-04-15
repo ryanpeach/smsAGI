@@ -63,7 +63,6 @@ services:
       - 4040:4040
     networks:
       - smsagi-network
-    restart: always
 
   # Langchain tracing
   # REF: https://github.com/agola11/langchain/blob/master/langchain/docker-compose.yaml
