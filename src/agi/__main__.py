@@ -53,4 +53,5 @@ while True:
         TaskExecutionCreationPrioritizationAgent(
             super_agent=super_agent, session=session, config=args.config
         ).run(top_priority_task_item)
+
         session.commit()

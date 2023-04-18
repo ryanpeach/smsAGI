@@ -127,7 +127,6 @@ class ThreadItem(Base):
             super_agent=super_agent, role=role, content=msg.content
         )
         session.add(thread_item)
-        session.commit()
         return thread_item
 
     @staticmethod

@@ -5,12 +5,13 @@ from typing import Dict, List
 from langchain import LLMChain
 from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.chat_models import ChatOpenAI
+from langchain.schema import SystemMessage
 from sqlalchemy.orm import Session
 
 from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
 from lib.config.prompts import Prompts
 from lib.config.tools import Tools
-from lib.sql import Goal, SuperAgent, TaskListItem
+from lib.sql import Goal, SuperAgent, TaskListItem, ThreadItem
 from lib.twilio import WAITING_FOR_USER_RESPONSE
 
 
@@ -58,9 +59,16 @@ class TaskExecutionCreationPrioritizationAgent:
     ) -> str:
         """Execute a task."""
         # context = self.vectorstore.get_top_tasks(query=self.agent.objective, k=k)
-        return await self.task_execution_agent.arun(
+        result = await self.task_execution_agent.arun(
             objective=self.objective, task=task.description
         )
+        msg = SystemMessage(content="Ran task: {task.description}\nResult: {result}")
+        ThreadItem.create(
+            super_agent=self.super_agent,
+            session=self.session,
+            msg=msg,
+        )
+        return result
 
     async def _create_next_task(
         self,
@@ -73,12 +81,21 @@ class TaskExecutionCreationPrioritizationAgent:
             task_description=task_list_item.description,
             objective=self.objective,
         )
+        out: List[TaskListItem] = []
         new_tasks = response.split("\n")
-        out = [
-            TaskListItem(super_agent=self.super_agent, description=task_description)
-            for task_description in new_tasks
-            if task_description.strip()
-        ]
+        for task in new_tasks:
+            task = task.strip()
+            task_list_item = TaskListItem(
+                super_agent=self.super_agent, description=task
+            )
+            self.session.add(task_list_item)
+            out.append(task_list_item)
+            msg = SystemMessage(content="New task: " + task)
+            ThreadItem.create(
+                super_agent=self.super_agent,
+                session=self.session,
+                msg=msg,
+            )
         return out
 
     async def arun(

@@ -3,11 +3,12 @@ from pathlib import Path
 
 from langchain import LLMChain
 from langchain.chat_models import ChatOpenAI
+from langchain.schema import SystemMessage
 from loguru import logger
 from sqlalchemy.orm import Session
 
 from lib.config.prompts import Prompts
-from lib.sql import Goal, SuperAgent, TaskListItem
+from lib.sql import Goal, SuperAgent, TaskListItem, ThreadItem
 
 
 class TaskPrioritizationAgent:
@@ -53,5 +54,14 @@ class TaskPrioritizationAgent:
                 )
             else:
                 task_list_item.priority = priority
+
+        msg = SystemMessage(
+            content=f"task prioritized {priority}: " + str(task_list_item.description)
+        )
+        ThreadItem.create(
+            super_agent=self.super_agent,
+            session=self.session,
+            msg=msg,
+        )
 
         return None

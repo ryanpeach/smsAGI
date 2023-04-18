@@ -1,6 +1,7 @@
 import os
 
 from flask import Flask, request
+from langchain.schema import HumanMessage
 from sqlalchemy.orm import sessionmaker
 from twilio.rest import Client
 
@@ -27,9 +28,10 @@ async def sms_reply():
     # Get the message from the request
     incoming_msg = request.values.get("Body", "").lower()
     phone_number = incoming_msg["From"]
+    user_msg = HumanMessage(content=incoming_msg)
     user = User.get_from_phone_number(phone_number)
     with _Session() as session:
-        ThreadItem(super_agent=user.primary_agent, content=incoming_msg, role="user")
+        ThreadItem.create(session=session, super_agent=user.primary_agent, msg=user_msg)
         user_agent = UserAgent(
             super_agent=user.primary_agent, session=session, config=CONFIG
         )
@@ -62,5 +64,6 @@ if __name__ == "__main__":
             user.primary_agent = super_agent
             session.add(user)
             session.add(super_agent)
+
         session.commit()
     app.run(debug=True)
