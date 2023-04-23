@@ -26,7 +26,8 @@ Base = declarative_base()
 
 # Define User table
 class User(Base):
-    __tablename__ = "users"
+    # Not to conflict with postgresql's user table
+    __tablename__ = "app_users"
     id = Column(Integer, primary_key=True)
     name = Column(String)
     phoneNumber = Column(String, unique=True)
@@ -53,7 +54,7 @@ class SuperAgent(Base):
     __tablename__ = "super_agents"
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("app_users.id"))
     user: User = relationship("User", foreign_keys=[user_id])
     wait_for_response = Column(Boolean, default=False)
 
@@ -266,4 +267,6 @@ def create_engine_from_env() -> Engine:
 
 # Create the tables in the database
 ENGINE = create_engine_from_env()
+print("Creating tables...")
 Base.metadata.create_all(ENGINE)
+print("Tables created successfully!")
