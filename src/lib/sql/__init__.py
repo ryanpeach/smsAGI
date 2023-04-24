@@ -26,6 +26,7 @@ Base = declarative_base()
 
 # Define User table
 class User(Base):
+    # Not to conflict with postgresql's user table
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     name = Column(String)
@@ -266,4 +267,6 @@ def create_engine_from_env() -> Engine:
 
 # Create the tables in the database
 ENGINE = create_engine_from_env()
+print("Creating tables...")
 Base.metadata.create_all(ENGINE)
+print("Tables created successfully!")

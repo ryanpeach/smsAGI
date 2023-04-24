@@ -20,6 +20,8 @@ services:
     networks:
       - smsagi-network
     restart: always
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
   smsagi-server:
     build:
