@@ -3,14 +3,14 @@ from pathlib import Path
 from typing import Dict, List
 
 from langchain import LLMChain
-from langchain.agents import AgentType, Tool, initialize_agent
+from langchain.agents import AgentType, initialize_agent
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage
 from sqlalchemy.orm import Session
 
 from lib.agents.task_prioritization_agent import TaskPrioritizationAgent
 from lib.config.prompts import Prompts
-from lib.config.tools import Tools
+from lib.config.tools import BaseTool, Tools
 from lib.sql import Goal, SuperAgent, TaskListItem, ThreadItem
 from lib.twilio import WAITING_FOR_USER_RESPONSE
 
@@ -18,7 +18,9 @@ from lib.twilio import WAITING_FOR_USER_RESPONSE
 class TaskExecutionCreationPrioritizationAgent:
     def __init__(self, super_agent: SuperAgent, session: Session, config: Path):
         self.session = session
-        self.tools = self.get_tools(config=config)
+        self.tools = self.get_tools(
+            config=config, session=session, super_agent=super_agent
+        )
         prompts = Prompts(config=config)
         goals = Goal.get_goals(agent=super_agent, session=session)
         self.objective = Goal.get_prompt(goals=goals, prompts=prompts)
@@ -43,14 +45,16 @@ class TaskExecutionCreationPrioritizationAgent:
         return Tools(config=config).get_zero_shot_llm()
 
     @staticmethod
-    def get_tools(config: Path) -> list[Tool]:
+    def get_tools(
+        config: Path, session: Session, super_agent: SuperAgent
+    ) -> list[BaseTool]:
         """Gets a list of tools from the config file."""
         tools = Tools(config=config)
         tools_list = [
             tools.get_search_tool(),
             tools.get_todo_tool(),
-            tools.get_send_message_tool(),
-            tools.get_send_message_wait_tool(),
+            tools.get_send_message_tool(session=session, super_agent=super_agent),
+            tools.get_send_message_wait_tool(session=session, super_agent=super_agent),
         ]
         return [tool for tool in tools_list if tool is not None]
 

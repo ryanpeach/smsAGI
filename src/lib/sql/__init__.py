@@ -30,21 +30,24 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    phoneNumber = Column(String, unique=True)
-    # Users can have more than one agent
-    # But only one primary agent
-    primary_agent_id = Column(Integer, ForeignKey("super_agents.id"))
-    primary_agent: "SuperAgent" = relationship(
-        "SuperAgent", foreign_keys=[primary_agent_id]
-    )
+    phone_number = Column(String, unique=True)
 
     @staticmethod
-    def get_from_phone_number(session: Session, phone_number: str) -> "User":
+    def get_from_phone_number(session: Session, phone_number: str) -> Optional["User"]:
         """Get the user associated with this phone number."""
-        out = session.query(User).filter(User.phoneNumber == phone_number).first()
+        out = session.query(User).filter(User.phone_number == phone_number).first()
         if isinstance(out, User):
             return out
-        raise KeyError("No user found.")
+        return None
+
+    def get_primary_agent(self, session: Session) -> "SuperAgent":
+        """Get the primary agent for this user."""
+        out = session.query(SuperAgent).where(SuperAgent.is_primary).all()
+        if len(out) == 0:
+            raise ValueError("No primary agent.")
+        elif len(out) == 1:
+            return out[0]
+        raise ValueError("More than one primary agent.")
 
 
 # Define Agent table
@@ -57,11 +60,18 @@ class SuperAgent(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     user: User = relationship("User", foreign_keys=[user_id])
     wait_for_response = Column(Boolean, default=False)
+    is_primary = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
 
     @staticmethod
     def get_random_super_agent(session: Session) -> Optional["SuperAgent"]:
         """Get a random super agent."""
-        out = session.query(SuperAgent).order_by(func.random()).first()
+        out = (
+            session.query(SuperAgent)
+            .where(SuperAgent.is_active)
+            .order_by(func.random())
+            .first()
+        )
         if isinstance(out, SuperAgent):
             return out
         elif out is None:
