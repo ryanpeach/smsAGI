@@ -43,6 +43,7 @@ class UserAgent:
         tools_list = [
             tools.get_todo_tool(),
             tools.get_send_message_tool(),
+            tools.get_send_message_wait_tool(),
         ]
         return [tool for tool in tools_list if tool is not None]
 

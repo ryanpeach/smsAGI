@@ -96,13 +96,16 @@ tools:
       temperature: 0.0
       model_name: "gpt-3.5-turbo"
   search:
-    enabled: false
+    enabled: true
     description: "useful for when you need to answer questions about current events"
   send_message:
-    enabled: false
+    enabled: true
     description: "Send a message to the user."
+  send_message_wait:
+    enabled: true
+    description: "Send a message to the user. Wait for a response."
   todo:
-    enabled: false
+    enabled: true
     description: "useful for when you need to come up with todo lists. Input: an objective to create a todo list for. Output: a todo list for that objective. Please be very clear what the objective is!"
     prompt:
       template: "You are a planner who is an expert at coming up with a todo list for a given objective. Come up with a todo list for this objective: {objective}"

@@ -7,9 +7,12 @@ from langchain import LLMChain, PromptTemplate, SerpAPIWrapper
 from langchain.agents import Tool, ZeroShotAgent
 from langchain.chat_models import ChatOpenAI
 from langchain.chat_models.openai import ChatOpenAI
+from langchain.tools import BaseTool
+from sqlalchemy.orm import Session
 
 from lib.config import Config
-from lib.twilio import send_message
+from lib.sql import SuperAgent
+from lib.twilio import SendMessageTool, SendMessageWaitTool
 
 
 class Tools(Config):
@@ -114,7 +117,9 @@ class Tools(Config):
 
         return None
 
-    def get_send_message_tool(self) -> Optional[Tool]:
+    def get_send_message_tool(
+        self, session: Session, super_agent: SuperAgent
+    ) -> Optional[BaseTool]:
         """The send message tool allows the agi to send a message to the user."""
         send_message_tool = self.config.get("tools", {}).get("send_message", {})
         default_send_message_tool = self.default_config["tools"]["send_message"]
@@ -122,16 +127,26 @@ class Tools(Config):
         send_message_tool_enabled = send_message_tool.get(
             "enabled", default_send_message_tool["enabled"]
         )
-        send_message_tool_description = send_message_tool.get(
-            "description", default_send_message_tool["description"]
+
+        return (
+            SendMessageTool(session=session, super_agent=super_agent)
+            if send_message_tool_enabled
+            else None
+        )
+
+    def get_send_message_wait_tool(
+        self, session: Session, super_agent: SuperAgent
+    ) -> Optional[BaseTool]:
+        """The send message tool allows the agi to send a message to the user."""
+        send_message_tool = self.config.get("tools", {}).get("send_message_wait", {})
+        default_send_message_tool = self.default_config["tools"]["send_message_wait"]
+
+        send_message_tool_enabled = send_message_tool.get(
+            "enabled", default_send_message_tool["enabled"]
         )
 
         return (
-            Tool(
-                description=send_message_tool_description,
-                name="send_message",
-                func=send_message,
-            )
+            SendMessageWaitTool(session=session, super_agent=super_agent)
             if send_message_tool_enabled
             else None
         )

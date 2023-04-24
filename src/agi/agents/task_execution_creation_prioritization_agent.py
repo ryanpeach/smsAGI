@@ -50,6 +50,7 @@ class TaskExecutionCreationPrioritizationAgent:
             tools.get_search_tool(),
             tools.get_todo_tool(),
             tools.get_send_message_tool(),
+            tools.get_send_message_wait_tool(),
         ]
         return [tool for tool in tools_list if tool is not None]
 
@@ -64,8 +65,8 @@ class TaskExecutionCreationPrioritizationAgent:
         )
         msg = SystemMessage(content="Ran task: {task.description}\nResult: {result}")
         ThreadItem.create(
-            super_agent=self.super_agent,
             session=self.session,
+            super_agent=self.super_agent,
             msg=msg,
         )
         return result
@@ -92,8 +93,8 @@ class TaskExecutionCreationPrioritizationAgent:
             out.append(task_list_item)
             msg = SystemMessage(content="New task: " + task)
             ThreadItem.create(
-                super_agent=self.super_agent,
                 session=self.session,
+                super_agent=self.super_agent,
                 msg=msg,
             )
         return out

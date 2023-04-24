@@ -59,8 +59,8 @@ class TaskPrioritizationAgent:
             content=f"task prioritized {priority}: " + str(task_list_item.description)
         )
         ThreadItem.create(
-            super_agent=self.super_agent,
             session=self.session,
+            super_agent=self.super_agent,
             msg=msg,
         )
 
